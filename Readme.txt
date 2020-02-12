@@ -23,3 +23,5 @@ Here are the names, sizes and dates of the original files
 Modifications:
 - renamed all files from *.Mod.txt to *.Mod
 - changed windows to unix line endings in all files
+- Kernel, FileDir, Files, Modules, Input and Display
+  modified as DEFINITION and removed unused members
