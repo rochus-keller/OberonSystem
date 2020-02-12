@@ -1,4 +1,4 @@
-MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
+MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 27.1.20*)
   IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts;
 
   CONST (*message ids*)
@@ -357,6 +357,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   BEGIN CurOff := voff
   END SetOffset;
 
+(* obsolete
   PROCEDURE Loop*;
     VAR V: Viewers.Viewer; M: InputMsg; N: ControlMsg;
        prevX, prevY, X, Y, t: INTEGER; keys: SET; ch: CHAR;
@@ -388,12 +389,52 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
         END
       END
     UNTIL FALSE
-  END Loop;
+  END Loop; *)
+  
+  PROCEDURE IdleHandler;
+  (* migrated from Loop *)
+  VAR t: INTEGER;
+  BEGIN
+        CurTask := CurTask.next; t := Kernel.Time();
+        IF t >= CurTask.nextTime THEN
+          CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
+        END
+  END IdleHandler;
+  
+  PROCEDURE MouseHandler( keys: SET; X, Y: INTEGER );
+  (* migrated from Loop *)
+  VAR
+ 	  V: Viewers.Viewer;
+	  M: InputMsg; N: ControlMsg;
+  BEGIN
+        M.id := track; M.X := X; M.Y := Y; M.keys := keys;
+        V := Viewers.This(M.X, M.Y); V.handle(V, M); 
+        DEC(ActCnt)
+  END MouseHandler;
+   
+  PROCEDURE CharHandler( ch: CHAR );
+  (* migrated from Loop *)
+  VAR 
+	  V: Viewers.Viewer;
+	  M: InputMsg; N: ControlMsg;
+	  X, Y: INTEGER; keys: SET;
+  BEGIN
+         Input.Mouse(keys, X, Y);
+         IF ch = ESC THEN
+	          N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer); LED(0)
+	    ELSIF ch = SETSTAR THEN
+	          N.id := mark; N.X := X; N.Y := Y; 
+	          V := Viewers.This(X, Y); V.handle(V, N)
+          ELSE 
+	          M.id := consume; M.ch := ch; M.fnt := CurFnt; M.col := CurCol; M.voff := CurOff;
+	          FocusViewer.handle(FocusViewer, M); DEC(ActCnt)
+          END
+  END CharHandler;
 
   PROCEDURE Reset*;
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
-    SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) Loop
+    SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) (* Loop *)
   END Reset;
 
 BEGIN User[0] := 0X;
@@ -407,5 +448,9 @@ BEGIN User[0] := 0X;
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
-  Modules.Load("System", Mod); Mod := NIL; Loop
+  Modules.Load("System", Mod); Mod := NIL; 
+  (* Loop *)
+  Input.RegisterCharHandler( CharHandler );
+  Input.RegisterMouseHandler( MouseHandler );
+  Input.RegisterIdleHandler( IdleHandler );
 END Oberon.
