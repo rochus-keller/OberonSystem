@@ -1,4 +1,4 @@
-MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 27.1.20*)
+MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 27.1.2020*)
   IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts;
 
   CONST (*message ids*)
@@ -328,7 +328,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 
   PROCEDURE Install* (T: Task);
   BEGIN
     IF T.state = off THEN
-      T.next := CurTask.next; CurTask.next := T; T.state := idle; T.nextTime := 0; INC(NofTasks)
+      T.next := CurTask.next; CurTask.next := T; T.state := idle; T.nextTime := 0; 
+      (* TODO INC(NofTasks) :  attempt to perform arithmetic on upvalue 'NofTasks' (a proto value) *)
     END
   END Install;
 
@@ -408,7 +409,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 
 	  M: InputMsg; N: ControlMsg;
   BEGIN
         M.id := track; M.X := X; M.Y := Y; M.keys := keys;
-        V := Viewers.This(M.X, M.Y); V.handle(V, M); 
+        V := Viewers.This(M.X, M.Y); 
+        IF V # NIL THEN V.handle(V, M) END; 
         DEC(ActCnt)
   END MouseHandler;
    

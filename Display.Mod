@@ -2,6 +2,7 @@ DEFINITION Display;  (*NW 5.11.2013 / 3.7.2016 / RK 25.1.20*)
 
   CONST black = 0; white = 1;  (*black = background*)
     replace = 0; paint = 1; invert = 2;  (*modes*)
+    PatternLen = 15 * 15 DIV 8 + 2;
 
   TYPE Frame = POINTER TO FrameDesc;
     FrameMsg = RECORD END ;
@@ -12,14 +13,15 @@ DEFINITION Display;  (*NW 5.11.2013 / 3.7.2016 / RK 25.1.20*)
 		        X, Y, W, H: INTEGER;
 		        handle: Handler
 	      END ;
-
-  VAR Width, Height: INTEGER;
-    arrow, star, hook, updown, block: INTEGER;
+	Pattern = ARRAY PatternLen OF BYTE;
     (*a pattern is an array of bytes; the first is its width (< 32), the second its height, the rest the raster*)
 
-  PROCEDURE ReplConst(col, x, y, w, h, mode: INTEGER);
+  VAR Width, Height: INTEGER;
+    arrow, star, hook, updown, block: Pattern;
+
+  PROCEDURE ReplConst(color, x, y, w, h, mode: INTEGER);
   (*PROCEDURE ReplPattern(col, patadr, x, y, w, h, mode: INTEGER);*)
-  PROCEDURE CopyPattern(col, patadr, x, y, mode: INTEGER);  (*only for modes = paint, invert*)
+  PROCEDURE CopyPattern(color: INTEGER; patadr: ARRAY OF BYTE; x, y, mode: INTEGER);  (*only for modes = paint, invert*)
   PROCEDURE CopyBlock(sx, sy, w, h, dx, dy, mode: INTEGER); (*only for mode = replace*)
 
 

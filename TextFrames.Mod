@@ -1,4 +1,4 @@
-MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
+MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017 / RK 29.1.2020*)
   IMPORT Modules, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers;
 
   CONST replace* = 0; insert* = 1; delete* = 2; unmark* = 3; (*message id*)
@@ -97,7 +97,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END SetChangeMark;
 
   PROCEDURE Width (VAR R: Texts.Reader; len: LONGINT): INTEGER;
-    VAR patadr, pos: LONGINT; ox, dx, x, y, w, h: INTEGER;
+    VAR patadr: Display.Pattern; pos: LONGINT; ox, dx, x, y, w, h: INTEGER;
   BEGIN pos := 0; ox := 0;
     WHILE pos < len DO
       Fonts.GetPat(R.fnt, nextCh, dx, x, y, w, h, patadr);
@@ -108,7 +108,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE DisplayLine (F: Frame; L: Line;
     VAR R: Texts.Reader; X, Y: INTEGER; len: LONGINT);
-    VAR patadr, NX,  dx, x, y, w, h: INTEGER;
+    VAR patadr: Display.Pattern; NX,  dx, x, y, w, h: INTEGER;
   BEGIN NX := F.X + F.W;
     WHILE (nextCh # CR) & (R.fnt # NIL) DO
       Fonts.GetPat(R.fnt, nextCh, dx, x, y, w, h, patadr);
@@ -177,7 +177,8 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
       L := L.next; org := org + L.len; curY := curY - lsp
     END;
     botY := F.Y + F.bot + dsr;
-    Texts.OpenReader(R, F.text, org); Texts.Read(R, nextCh);
+    Texts.OpenReader(R, F.text, org); 
+    Texts.Read(R, nextCh);
     WHILE ~L.eot & (curY >= botY) DO
       NEW(l);
       DisplayLine(F, l, R, F.X + F.left, curY, 0);
@@ -256,7 +257,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE LocateString (F: Frame; x, y: INTEGER; VAR loc: Location);
     VAR R: Texts.Reader;
-      patadr, bpos, pos, lim: LONGINT;
+      patadr: Display.Pattern; bpos, pos, lim: LONGINT;
       bx, ex, ox, dx, u, v, w, h: INTEGER;
   BEGIN LocateLine(F, y, loc);
     lim := loc.org + loc.lin.len - 1;
@@ -285,7 +286,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE LocateChar (F: Frame; x, y: INTEGER; VAR loc: Location);
     VAR R: Texts.Reader;
-      patadr, pos, lim: LONGINT;
+      patadr: Display.Pattern; pos, lim: LONGINT;
       ox, dx, u, v, w, h: INTEGER;
   BEGIN LocateLine(F, y, loc);
     lim := loc.org + loc.lin.len - 1;
