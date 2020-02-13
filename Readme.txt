@@ -19,9 +19,16 @@ Here are the names, sizes and dates of the original files
 16900 Nov 29  2013 Files.Mod
  4249 Nov 29  2013 Fonts.Mod
 
-
 Modifications:
 - renamed all files from *.Mod.txt to *.Mod
 - changed windows to unix line endings in all files
 - Kernel, FileDir, Files, Modules, Input and Display
   modified as DEFINITION and removed unused members
+- partially re-implemented Fonts.Mod to avoid SYSTEM.GET/SET 
+  and pointer arithmetics
+- it works to some extent in the Oberon IDE, debugging still required
+
+
+Goal: 
+Test case for Oberon to LuaJIT bytecode compiler, IDE
+and source level debugger, see https://github.com/rochus-keller/Oberon

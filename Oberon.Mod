@@ -329,7 +329,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 
   BEGIN
     IF T.state = off THEN
       T.next := CurTask.next; CurTask.next := T; T.state := idle; T.nextTime := 0; 
-      (* TODO INC(NofTasks) :  attempt to perform arithmetic on upvalue 'NofTasks' (a proto value) *)
+      INC(NofTasks)  
     END
   END Install;
 
@@ -393,7 +393,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 
   END Loop; *)
   
   PROCEDURE IdleHandler;
-  (* migrated from Loop *)
+  (* RK: migrated from Loop *)
   VAR t: INTEGER;
   BEGIN
         CurTask := CurTask.next; t := Kernel.Time();
@@ -403,7 +403,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 
   END IdleHandler;
   
   PROCEDURE MouseHandler( keys: SET; X, Y: INTEGER );
-  (* migrated from Loop *)
+  (* RK: migrated from Loop *)
   VAR
  	  V: Viewers.Viewer;
 	  M: InputMsg; N: ControlMsg;
@@ -415,7 +415,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 
   END MouseHandler;
    
   PROCEDURE CharHandler( ch: CHAR );
-  (* migrated from Loop *)
+  (* RK: migrated from Loop *)
   VAR 
 	  V: Viewers.Viewer;
 	  M: InputMsg; N: ControlMsg;
