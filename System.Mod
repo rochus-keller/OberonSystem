@@ -1,4 +1,4 @@
-MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
+MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / RK 16.2.2020 *)
   IMPORT SYSTEM, Kernel, FileDir, Files, Modules,
     Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
@@ -170,8 +170,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   (* ------------- Toolbox of file system ---------------*)
 
-  PROCEDURE List(name: FileDir.FileName; adr: LONGINT; VAR cont: BOOLEAN);
-    VAR i0, i, j0, j: INTEGER; hp: FileDir.FileHeader;
+  PROCEDURE List(name: FileDir.FileName; hp: FileDir.FileHeader; VAR cont: BOOLEAN);
+	  (* RK: modified so that Kernel.GetSector is no longer used *)
+    VAR i0, i, j0, j: INTEGER; 
   BEGIN
     i := 0;
     WHILE (pat[i] > "*") & (pat[i] = name[i]) DO INC(i) END ;
@@ -191,9 +192,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     IF (name[i0] = 0X) & (pat[j0] = 0X) THEN (*found*)
       Texts.WriteString(W, name);
       IF pat[j0+1] = "!" THEN (*option*)
-        Kernel.GetSector(adr, hp);
         Texts.Write(W, 9X); Texts.WriteClock(W, hp.date);
-        Texts.WriteInt(W, hp.aleng*FileDir.SectorSize + hp.bleng - FileDir.HeaderSize, 8); (*length*)
+        Texts.WriteInt(W, hp.leng, 8); (*length*)
         (*Texts.WriteHex(W, adr)*)
       END ;
       Texts.WriteLn(W)
