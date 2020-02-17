@@ -34,7 +34,7 @@ DEFINITION Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013 / RK 
 	(*PROCEDURE ReadSet(VAR R: Rider; VAR s: SET);*)
 	(*PROCEDURE ReadReal(VAR R: Rider; VAR x: REAL);*)
 	PROCEDURE ReadString(VAR R: Rider; VAR x: ARRAY OF CHAR);
-	(*PROCEDURE ReadNum(VAR R: Rider; VAR x: INTEGER);*)
+	PROCEDURE ReadNum(VAR R: Rider; VAR x: INTEGER);
 
 	(*---------------------------Write---------------------------*)
 
@@ -45,7 +45,7 @@ DEFINITION Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013 / RK 
 	(*PROCEDURE WriteSet(VAR R: Rider; s: SET);*)
 	(*PROCEDURE WriteReal(VAR R: Rider; x: REAL);*)
 	PROCEDURE WriteString(VAR R: Rider; x: ARRAY OF CHAR);
-	(*PROCEDURE WriteNum(VAR R: Rider; x: INTEGER);*)
+	PROCEDURE WriteNum(VAR R: Rider; x: INTEGER);
 
 	PROCEDURE RestoreList; (*after mark phase of garbage collection*)
 

@@ -23,7 +23,7 @@ DEFINITION Display;  (*NW 5.11.2013 / 3.7.2016 / RK 25.1.20*)
   (*PROCEDURE ReplPattern(col, patadr, x, y, w, h, mode: INTEGER);*)
   PROCEDURE CopyPattern(color: INTEGER; patadr: ARRAY OF BYTE; x, y, mode: INTEGER);  (*only for modes = paint, invert*)
   PROCEDURE CopyBlock(sx, sy, w, h, dx, dy, mode: INTEGER); (*only for mode = replace*)
-
+  PROCEDURE Dot(col, x, y, mode: INTEGER);
 
 (*Width := 1024; Height := 768;
   arrow := SYSTEM.ADR($0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00$);

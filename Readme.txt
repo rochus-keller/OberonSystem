@@ -27,6 +27,8 @@ Modifications:
 - partially re-implemented Fonts.Mod to avoid SYSTEM.GET/SET 
   and pointer arithmetics
 - it works to some extent in the Oberon IDE, debugging still required
+- removed Kernel.GetSector, modified signature FileDir.EntryHandler,
+  changed System.List accordingly
 
 
 Goal: 

@@ -1,4 +1,4 @@
-MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 27.1.2020*)
+MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 27.1.2020, 16.2. 2020 *)
   IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts;
 
   CONST (*message ids*)
@@ -307,6 +307,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 
   PROCEDURE GC;
     VAR mod: Modules.Module;
   BEGIN
+    (* RK: obsolete
     IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
       mod := Modules.root; LED(21H);
       WHILE mod # NIL DO
@@ -318,7 +319,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 
       Kernel.Scan; LED(20H);
       ActCnt := BasicCycle
     END
-  END GC;
+    *)
+  END GC; 
 
   PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
     VAR t: Task;
