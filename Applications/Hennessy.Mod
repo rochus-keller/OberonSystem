@@ -12,7 +12,7 @@ MODULE Hennessy;
     *)
 
 IMPORT
-	Oberon, Texts, S := SYSTEM;
+	S := SYSTEM, Texts, Oberon;
 
 CONST
 	bubblebase = 1.61;
@@ -163,7 +163,7 @@ END Initrand;
 PROCEDURE Rand (): LONGINT;
 BEGIN
     seed := (seed * 1309 + 13849) MOD 65535;
-    RETURN (seed);
+    RETURN seed
 END Rand;
 
 
@@ -227,7 +227,7 @@ END Perm;
 		ELSE
 			Str("out of space   $")
 		END ;
-		RETURN (temp);
+		RETURN temp
 	END Getelement;
 	
 	PROCEDURE Push(i,s: LONGINT);
@@ -271,7 +271,7 @@ END Perm;
 		ELSE
 			Str("nothing to pop $")
 		END
-		RETURN temp1;
+		RETURN temp1
 	END Pop;
 
 	PROCEDURE Move (s1,s2: LONGINT);
@@ -416,7 +416,7 @@ END Intmm;
 		WHILE i <= rowsize DO j := 1;
 			WHILE j <= rowsize DO
 				temp := Rand();
-				m[i][j] := (temp - (temp DIV 120)*120 - 60) DIV 3;
+				m[i][j] := FLT((temp - (temp DIV 120)*120 - 60) DIV 3);
 				INC(j)
 			END ;
 			INC(i)
@@ -471,7 +471,7 @@ END Mm;
 			INC(k)
 		END ;
 		IF ~ok THEN k := 0 END;
-		RETURN k;
+		RETURN k
 	END Place;
 	
 	PROCEDURE Remove (i, j: LONGINT);
@@ -886,7 +886,7 @@ END Trees;
 		IF arg1 < arg2 THEN res := arg1
 		ELSE res := arg2
 		END;
-		RETURN res;
+		RETURN res
 	END Min0;
 
 	PROCEDURE Uniform11(iy: LONGINT; yfl: REAL);
