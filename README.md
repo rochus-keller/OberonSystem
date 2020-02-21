@@ -13,7 +13,7 @@ Screenshot of the IDE in the source level debugger at a break:
 Here is a binary version of the Oberon IDE for Windows: http://software.rochus-keller.info/OberonIDE_win32.zip.
 Just unpack the ZIP somewhere on your drive and double-click OberonIDE.exe; Qt libraries are included, as well as this version of the Oberon System. To run it, open the project in the IDE using CTRL+O and then press CTRL+R, or right-click to open context menus and select the commands from there.
 
-The implementation is platform independent. It can be built on all platforms where Qt 5 is available (e.g. Linux, macOS, FreeBSD, Raspberry PI, etc.).
+The implementation is platform independent. It can be built on all platforms where LuaJIT and Qt 5 are available (e.g. Linux, macOS, FreeBSD, Raspberry PI, etc.). Here is a binary for macOS: http://software.rochus-keller.info/OberonIDE_macOS_x64.dmg.
 
 For more information about the Oberon IDE and LuaJIT bytecode compiler see https://github.com/rochus-keller/Oberon/blob/master/README.md
 
