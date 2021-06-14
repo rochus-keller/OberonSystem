@@ -10,7 +10,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / RK 16.2.2020 *)
     pat: ARRAY 32 OF CHAR;
 
   PROCEDURE GetArg(VAR S: Texts.Scanner);
-    VAR T: Texts.Text; beg, end, time: LONGINT;
+    VAR T: Texts.Text; beg, end, time: INTEGER;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF (S.class = Texts.Char) & (S.c = "^") THEN
       Oberon.GetSelection(T, beg, end, time);
@@ -55,7 +55,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / RK 16.2.2020 *)
   
   PROCEDURE Date*;
     VAR S: Texts.Scanner;
-      dt, hr, min, sec, yr, mo, day: LONGINT;
+      dt, hr, min, sec, yr, mo, day: INTEGER;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF S.class = Texts.Int THEN (*set clock*)
       day := S.i; Texts.Scan(S); mo := S.i; Texts.Scan(S); yr := S.i; Texts.Scan(S);
@@ -149,7 +149,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / RK 16.2.2020 *)
 
   PROCEDURE Free*;
     VAR T: Texts.Text;
-      beg, end, time: LONGINT;
+      beg, end, time: INTEGER;
       S: Texts.Scanner;
   BEGIN Texts.WriteString(W, "System.Free"); EndLine;
     Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
@@ -205,7 +205,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / RK 16.2.2020 *)
       R: Texts.Reader;
       T, t: Texts.Text;
       V: Viewers.Viewer;
-      beg, end, time: LONGINT;
+      beg, end, time: INTEGER;
       pre: ARRAY 32 OF CHAR;
   BEGIN Texts.OpenReader(R, Oberon.Par.text, Oberon.Par.pos); Texts.Read(R, ch);
     WHILE ch = " " DO Texts.Read(R, ch) END;
@@ -328,7 +328,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / RK 16.2.2020 *)
 
   PROCEDURE ShowCommands*;
     VAR M: Modules.Module;
-      comadr: LONGINT; ch: CHAR;
+      comadr: INTEGER; ch: CHAR;
       T: Texts.Text;
       S: Texts.Scanner;
       V: Viewers.Viewer;
@@ -365,7 +365,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / RK 16.2.2020 *)
   PROCEDURE OpenViewers;
     VAR logV, toolV: Viewers.Viewer;
       menu, main: Display.Frame;
-      d: LONGINT; X, Y: INTEGER;
+      d: INTEGER; X, Y: INTEGER;
   BEGIN d := Kernel.Clock(); Texts.WriteString(W, "Oberon V5  NW 14.4.2013"); EndLine;
     Oberon.AllocateSystemViewer(0, X, Y);
     menu := TextFrames.NewMenu("System.Log", LogMenu);

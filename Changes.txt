@@ -29,7 +29,7 @@ Modifications:
 - it works to some extent in the Oberon IDE, debugging still required
 - removed Kernel.GetSector, modified signature FileDir.EntryHandler,
   changed System.List accordingly
-
+- Replaced all instances of LONGINT by INTEGER
 
 Goal: 
 Test case for Oberon to LuaJIT bytecode compiler, IDE

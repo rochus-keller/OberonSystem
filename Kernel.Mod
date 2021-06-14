@@ -5,8 +5,8 @@ DEFINITION Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014 / RK 25.1.20 / 16.2.2
 	stackOrg : INTEGER;
 
 
-	(*PROCEDURE New(VAR ptr: LONGINT; tag: LONGINT);*)
-	(*PROCEDURE Mark(pref: LONGINT);*)
+	(*PROCEDURE New(VAR ptr: INTEGER; tag: INTEGER);*)
+	(*PROCEDURE Mark(pref: INTEGER);*)
 	(*PROCEDURE Scan;*)
 
 	PROCEDURE Time(): INTEGER;
