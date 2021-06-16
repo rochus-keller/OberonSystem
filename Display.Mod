@@ -2,7 +2,7 @@ DEFINITION Display;  (*NW 5.11.2013 / 3.7.2016 / RK 25.1.20*)
 
   CONST black = 0; white = 1;  (*black = background*)
     replace = 0; paint = 1; invert = 2;  (*modes*)
-    PatternLen = 15 * 15 DIV 8 + 2;
+    PatternLen = 32; (* size required to accomodate given hex strings *)
 
   TYPE Frame = POINTER TO FrameDesc;
     FrameMsg = RECORD END ;
