@@ -115,35 +115,35 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
     WHILE sa0 # end DO
       IF n >= 0 THEN (*shift right*) m1 := {n .. 31};
         IF v1 + w >= 32 THEN
-          SYSTEM.GET(sa0+len, src); src := ROR(src, n);
+          SYSTEM.GET(sa0+len, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
           SYSTEM.GET(sa0+len+d, dst);
           SYSTEM.PUT(sa0+len+d, (dst * m2) + (src - m2));
           spill := src - m1;
           FOR sa1 := sa0 + len-4 TO sa0+4  BY -4 DO
-            SYSTEM.GET(sa1, src); src := ROR(src, n);
+            SYSTEM.GET(sa1, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
             SYSTEM.PUT(sa1+d, spill + (src * m1));
             spill := src - m1
           END ;
-          SYSTEM.GET(sa0, src); src := ROR(src, n);
+          SYSTEM.GET(sa0, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
           SYSTEM.GET(sa0+d, dst);
           SYSTEM.PUT(sa0+d, (src * m0) + (dst - m0))
-        ELSE SYSTEM.GET(sa0, src); src := ROR(src, n);
+        ELSE SYSTEM.GET(sa0, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
           SYSTEM.GET(sa0+d, dst);
           SYSTEM.PUT(sa0+d, (src * m3) + (dst - m3))
         END
       ELSE (*shift left*) m1 := {-n .. 31};
-        SYSTEM.GET(sa0, src); src := ROR(src, n);
+        SYSTEM.GET(sa0, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
         SYSTEM.GET(sa0+d, dst);
         IF v1 + w < 32 THEN
           SYSTEM.PUT(sa0+d, (dst - m3) + (src * m3))
         ELSE SYSTEM.PUT(sa0+d, (dst - m0) + (src * m0));
           spill := src - m1;
           FOR sa1 := sa0+4 TO sa0 + len-4 BY 4 DO
-            SYSTEM.GET(sa1, src); src := ROR(src, n);
+            SYSTEM.GET(sa1, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
             SYSTEM.PUT(sa1+d, spill + (src * m1));
             spill := src - m1
           END ;
-          SYSTEM.GET(sa0+len, src); src := ROR(src, n);
+          SYSTEM.GET(sa0+len, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
           SYSTEM.GET(sa0+len+d, dst);
           SYSTEM.PUT(sa0+len+d, (src - m2) + (dst * m2))
         END

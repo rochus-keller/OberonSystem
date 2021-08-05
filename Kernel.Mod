@@ -18,9 +18,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     
 (* ---------- New: heap allocation ----------*)
 
-  PROCEDURE GetBlock(VAR p: LONGINT; len: LONGINT);
+  PROCEDURE GetBlock(VAR p: INTEGER; len: INTEGER);
     (*len is multiple of 256*)
-    VAR q0, q1, q2, size: LONGINT; done: BOOLEAN;
+    VAR q0, q1, q2, size: INTEGER; done: BOOLEAN;
   BEGIN q0 := 0; q1 := list0; done := FALSE;
     WHILE ~done & (q1 # 0) DO
       SYSTEM.GET(q1, size); SYSTEM.GET(q1+8, q2);
@@ -37,8 +37,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     IF ~done THEN p := 0 END
   END GetBlock;
 
-  PROCEDURE GetBlock128(VAR p: LONGINT);
-    VAR q: LONGINT;
+  PROCEDURE GetBlock128(VAR p: INTEGER);
+    VAR q: INTEGER;
   BEGIN
     IF list1 # 0 THEN p := list1; SYSTEM.GET(list1+8, list1)
     ELSE GetBlock(q, 256); SYSTEM.PUT(q+128, 128); SYSTEM.PUT(q+132, -1); SYSTEM.PUT(q+136, list1);
@@ -46,8 +46,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END
   END GetBlock128;
 
-  PROCEDURE GetBlock64(VAR p: LONGINT);
-    VAR q: LONGINT;
+  PROCEDURE GetBlock64(VAR p: INTEGER);
+    VAR q: INTEGER;
   BEGIN
     IF list2 # 0 THEN p := list2; SYSTEM.GET(list2+8, list2)
     ELSE GetBlock128(q); SYSTEM.PUT(q+64, 64); SYSTEM.PUT(q+68, -1); SYSTEM.PUT(q+72, list2);
@@ -55,8 +55,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END
   END GetBlock64;
 
-  PROCEDURE GetBlock32(VAR p: LONGINT);
-    VAR q: LONGINT;
+  PROCEDURE GetBlock32(VAR p: INTEGER);
+    VAR q: INTEGER;
   BEGIN
     IF list3 # 0 THEN p := list3; SYSTEM.GET(list3+8, list3)
     ELSE GetBlock64(q); SYSTEM.PUT(q+32, 32); SYSTEM.PUT(q+36, -1); SYSTEM.PUT(q+40, list3);
@@ -64,9 +64,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END
   END GetBlock32;
 
-   PROCEDURE New*(VAR ptr: LONGINT; tag: LONGINT);
+   PROCEDURE New*(VAR ptr: INTEGER; tag: INTEGER);
     (*called by NEW via MT[0]; ptr and tag are pointers*)
-    VAR p, size, lim: LONGINT;
+    VAR p, size, lim: INTEGER;
   BEGIN SYSTEM.GET(tag, size);
     IF size = 32 THEN GetBlock32(p)
     ELSIF size = 64 THEN GetBlock64(p)
@@ -81,8 +81,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
 (* ---------- Garbage collector ----------*)
 
-  PROCEDURE Mark*(pref: LONGINT);
-    VAR pvadr, offadr, offset, tag, p, q, r: LONGINT;
+  PROCEDURE Mark*(pref: INTEGER);
+    VAR pvadr, offadr, offset, tag, p, q, r: INTEGER;
   BEGIN SYSTEM.GET(pref, pvadr); (*pointers < heapOrg considered NIL*)
     WHILE pvadr # 0 DO
       SYSTEM.GET(pvadr, p); SYSTEM.GET(p-4, offadr);
@@ -103,7 +103,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   END Mark;
 
   PROCEDURE Scan*;
-    VAR p, q, mark, tag, size: LONGINT;
+    VAR p, q, mark, tag, size: INTEGER;
   BEGIN p := heapOrg;
     REPEAT SYSTEM.GET(p+4, mark); q := p;
       WHILE mark = 0 DO

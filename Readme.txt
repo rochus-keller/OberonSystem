@@ -1,9 +1,7 @@
 This is a modified version of the original Oberon System downloaded from
 http://www.projectoberon.com/ (files inner.zip and outer.zip) on 2020-01-13
 
-Here are the names, sizes and dates of the original files
-(ordered by date):
-
+Here are the names, sizes and dates of the original files:
 18662 Nov 28  2018 Texts.Mod
 33377 Mar 27  2017 TextFrames.Mod
  8355 Jul  5  2016 Display.Mod
@@ -23,3 +21,4 @@ Here are the names, sizes and dates of the original files
 Modifications:
 - renamed all files from *.Mod.txt to *.Mod
 - changed windows to unix line endings in all files
+- replaced all LONGINT by INTEGER, fixes ROR(SYSTEM.VAL(INTEGER,x),y) in Display.Mod
