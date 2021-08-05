@@ -1,0 +1,33 @@
+module SYSTEM
+
+	proc GETS*( a: integer; var v: set )
+	end GETS
+
+	proc PUTS*( a: integer; x: set )
+	end PUTS
+	
+	proc GETI*( a: integer; var v: integer )
+	end GETI
+	
+	proc PUTI*( a: integer; x: integer )
+	end PUTI
+	
+	proc GETB*( a: integer; var v: byte )
+	end GETB
+ 
+ 	proc PUTB*( a: integer; x: byte )
+	end PUTB
+	
+	proc REG*( r: integer ): integer
+	end REG
+	
+	proc LDREG*( r, a: integer)
+	end LDREG
+	
+	proc BIT*(a,n: integer): boolean
+	end BIT
+	
+	proc H*(i: integer): integer
+	end H
+	
+end SYSTEM

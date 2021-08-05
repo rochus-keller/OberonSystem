@@ -14,7 +14,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
       END ;
 
   VAR Base*, Width*, Height*: INTEGER;
-    arrow*, star*, hook*, updown*, block*, cross*, grey*: INTEGER;
+    arrow*, star*, hook*, updown*, block*, cross*, grey*: ARRAY 255 OF BYTE;
     (*a pattern is an array of bytes; the first is its width (< 32), the second its height, the rest the raster*)
 
   PROCEDURE Handle*(F: Frame; VAR M: FrameMsg);
@@ -27,11 +27,11 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   PROCEDURE Dot*(col, x, y, mode: INTEGER);
     VAR a: INTEGER; u, s: SET;
   BEGIN a := base + (x DIV 32)*4 + y*128;
-    s := {x MOD 32}; SYSTEM.GET(a, u);
-    IF mode = paint THEN SYSTEM.PUT(a, u + s)
-    ELSIF mode = invert THEN SYSTEM.PUT(a, u / s)
+    s := {x MOD 32}; SYSTEM.GETS(a, u);
+    IF mode = paint THEN SYSTEM.PUTS(a, u + s)
+    ELSIF mode = invert THEN SYSTEM.PUTS(a, u / s)
     ELSE (*mode = replace*)
-      IF col # black THEN SYSTEM.PUT(a, u + s) ELSE SYSTEM.PUT(a, u - s) END
+      IF col # black THEN SYSTEM.PUTS(a, u + s) ELSE SYSTEM.PUTS(a, u - s) END
     END
   END Dot;
 
@@ -42,55 +42,55 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
     IF ar = al THEN
       mid := {(x MOD 32) .. ((x+w-1) MOD 32)};
       FOR a1 := al TO al + (h-1)*128 BY 128 DO
-        SYSTEM.GET(a1, pix);
-        IF mode = invert THEN SYSTEM.PUT(a1, pix / mid)
-        ELSIF (mode = replace) & (col = black) THEN (*erase*) SYSTEM.PUT(a1, pix - mid)
-        ELSE (* (mode = paint) OR (mode = replace) & (col # black) *) SYSTEM.PUT(a1, pix + mid)
+        SYSTEM.GETS(a1, pix);
+        IF mode = invert THEN SYSTEM.PUTS(a1, pix / mid)
+        ELSIF (mode = replace) & (col = black) THEN (*erase*) SYSTEM.PUTS(a1, pix - mid)
+        ELSE (* (mode = paint) OR (mode = replace) & (col # black) *) SYSTEM.PUTS(a1, pix + mid)
         END
       END
     ELSIF ar > al THEN
       left := {(x MOD 32) .. 31}; right := {0 .. ((x+w-1) MOD 32)};
       FOR a0 := al TO al + (h-1)*128 BY 128 DO
-        SYSTEM.GET(a0, pixl); SYSTEM.GET(ar, pixr);
+        SYSTEM.GETS(a0, pixl); SYSTEM.GETS(ar, pixr);
         IF mode = invert THEN
-          SYSTEM.PUT(a0, pixl / left);
-          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.GET(a1, pix); SYSTEM.PUT(a1, -pix) END ;
-          SYSTEM.PUT(ar, pixr / right)
+          SYSTEM.PUTS(a0, pixl / left);
+          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.GETS(a1, pix); SYSTEM.PUTS(a1, -pix) END ;
+          SYSTEM.PUTS(ar, pixr / right)
         ELSIF (mode = replace) & (col = black) THEN (*erase*)
-          SYSTEM.PUT(a0, pixl - left);
-          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.PUT(a1, {}) END ;
-          SYSTEM.PUT(ar, pixr - right)
+          SYSTEM.PUTS(a0, pixl - left);
+          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.PUTS(a1, {}) END ;
+          SYSTEM.PUTS(ar, pixr - right)
         ELSE (* (mode = paint) OR (mode = replace) & (col # black) *)
-          SYSTEM.PUT(a0, pixl + left);
-          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.PUT(a1, {0 .. 31}) END ;
-          SYSTEM.PUT(ar, pixr + right)
+          SYSTEM.PUTS(a0, pixl + left);
+          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.PUTS(a1, {0 .. 31}) END ;
+          SYSTEM.PUTS(ar, pixr + right)
         END ;
         INC(ar, 128)
       END
     END
   END ReplConst;
 
-  PROCEDURE CopyPattern*(col, patadr, x, y, mode: INTEGER);  (*only for modes = paint, invert*)
-    VAR a, a0, pwd: INTEGER;
+  PROCEDURE CopyPattern*(col: INTEGER; IN patadr: ARRAY OF BYTE; x, y, mode: INTEGER);  (*only for modes = paint, invert*)
+    VAR a, a0, pwd, i: INTEGER;
       w, h, pbt: BYTE; pix: SET;
-  BEGIN SYSTEM.GET(patadr, w); SYSTEM.GET(patadr+1, h); INC(patadr, 2);
+  BEGIN w := patadr[0]; h := patadr[1]; i := 2;
     a := base + (x DIV 32)*4 + y*128; 
     FOR a0 := a TO a + (h-1)*128 BY 128 DO
       (*build pattern line; w < 32*)
-      SYSTEM.GET(patadr, pbt); INC(patadr); pwd := pbt;
-      IF w > 8 THEN SYSTEM.GET(patadr, pbt); INC(patadr); pwd := pbt*100H + pwd;
-        IF w > 16 THEN SYSTEM.GET(patadr, pbt); INC(patadr); pwd := pbt*10000H + pwd;
-          IF w > 24 THEN SYSTEM.GET(patadr, pbt); INC(patadr); pwd := pbt*1000000H + pwd END
+      pbt := patadr[i]; INC(i); pwd := pbt;
+      IF w > 8 THEN pbt := patadr[i]; INC(i); pwd := pbt*100H + pwd;
+        IF w > 16 THEN pbt := patadr[i]; INC(i); pwd := pbt*10000H + pwd;
+          IF w > 24 THEN pbt := patadr[i]; INC(i); pwd := pbt*1000000H + pwd END
         END
       END ;
-      SYSTEM.GET(a0, pix);
-      IF mode = invert THEN SYSTEM.PUT(a0, SYSTEM.VAL(SET, LSL(pwd, x MOD 32)) / pix)
-      ELSE SYSTEM.PUT(a0, SYSTEM.VAL(SET, LSL(pwd, x MOD 32)) + pix)
+      SYSTEM.GETS(a0, pix);
+      IF mode = invert THEN SYSTEM.PUTS(a0, VAL(SET, LSL(pwd, x MOD 32)) / pix)
+      ELSE SYSTEM.PUTS(a0, VAL(SET, LSL(pwd, x MOD 32)) + pix)
       END ;
       IF (x MOD 32) + w > 32 THEN (*spill over*)
-        SYSTEM.GET(a0+4, pix);
-        IF mode = invert THEN SYSTEM.PUT(a0+4, SYSTEM.VAL(SET, ASR(pwd, -(x MOD 32))) / pix)
-        ELSE SYSTEM.PUT(a0+4, SYSTEM.VAL(SET, ASR(pwd, -(x MOD 32))) + pix)
+        SYSTEM.GETS(a0+4, pix);
+        IF mode = invert THEN SYSTEM.PUTS(a0+4, VAL(SET, ASR(pwd, -(x MOD 32))) / pix)
+        ELSE SYSTEM.PUTS(a0+4, VAL(SET, ASR(pwd, -(x MOD 32))) + pix)
         END
       END
     END
@@ -115,37 +115,37 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
     WHILE sa0 # end DO
       IF n >= 0 THEN (*shift right*) m1 := {n .. 31};
         IF v1 + w >= 32 THEN
-          SYSTEM.GET(sa0+len, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
-          SYSTEM.GET(sa0+len+d, dst);
-          SYSTEM.PUT(sa0+len+d, (dst * m2) + (src - m2));
+          SYSTEM.GETS(sa0+len, src); src := ROR(VAL(INTEGER,src), n);
+          SYSTEM.GETS(sa0+len+d, dst);
+          SYSTEM.PUTS(sa0+len+d, (dst * m2) + (src - m2));
           spill := src - m1;
           FOR sa1 := sa0 + len-4 TO sa0+4  BY -4 DO
-            SYSTEM.GET(sa1, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
-            SYSTEM.PUT(sa1+d, spill + (src * m1));
+            SYSTEM.GETS(sa1, src); src := ROR(VAL(INTEGER,src), n);
+            SYSTEM.PUTS(sa1+d, spill + (src * m1));
             spill := src - m1
           END ;
-          SYSTEM.GET(sa0, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
-          SYSTEM.GET(sa0+d, dst);
-          SYSTEM.PUT(sa0+d, (src * m0) + (dst - m0))
-        ELSE SYSTEM.GET(sa0, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
-          SYSTEM.GET(sa0+d, dst);
-          SYSTEM.PUT(sa0+d, (src * m3) + (dst - m3))
+          SYSTEM.GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+          SYSTEM.GETS(sa0+d, dst);
+          SYSTEM.PUTS(sa0+d, (src * m0) + (dst - m0))
+        ELSE SYSTEM.GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+          SYSTEM.GETS(sa0+d, dst);
+          SYSTEM.PUTS(sa0+d, (src * m3) + (dst - m3))
         END
       ELSE (*shift left*) m1 := {-n .. 31};
-        SYSTEM.GET(sa0, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
-        SYSTEM.GET(sa0+d, dst);
+        SYSTEM.GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+        SYSTEM.GETS(sa0+d, dst);
         IF v1 + w < 32 THEN
-          SYSTEM.PUT(sa0+d, (dst - m3) + (src * m3))
-        ELSE SYSTEM.PUT(sa0+d, (dst - m0) + (src * m0));
+          SYSTEM.PUTS(sa0+d, (dst - m3) + (src * m3))
+        ELSE SYSTEM.PUTS(sa0+d, (dst - m0) + (src * m0));
           spill := src - m1;
           FOR sa1 := sa0+4 TO sa0 + len-4 BY 4 DO
-            SYSTEM.GET(sa1, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
-            SYSTEM.PUT(sa1+d, spill + (src * m1));
+            SYSTEM.GETS(sa1, src); src := ROR(VAL(INTEGER,src), n);
+            SYSTEM.PUTS(sa1+d, spill + (src * m1));
             spill := src - m1
           END ;
-          SYSTEM.GET(sa0+len, src); src := ROR(SYSTEM.VAL(INTEGER,src), n);
-          SYSTEM.GET(sa0+len+d, dst);
-          SYSTEM.PUT(sa0+len+d, (src - m2) + (dst * m2))
+          SYSTEM.GETS(sa0+len, src); src := ROR(VAL(INTEGER,src), n);
+          SYSTEM.GETS(sa0+len+d, dst);
+          SYSTEM.PUTS(sa0+len+d, (src - m2) + (dst * m2))
         END
       END ;
       INC(sa0, step)
@@ -158,21 +158,21 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
       pta0, pta1: INTEGER;  (*pattern addresses*)
       ph: BYTE;
       left, right, mid, pix, pixl, pixr, ptw: SET;
-  BEGIN al := base + y*128; SYSTEM.GET(patadr+1, ph);
+  BEGIN al := base + y*128; SYSTEM.GETB(patadr+1, ph);
     pta0 := patadr+4; pta1 := ph*4 + pta0;
     ar := ((x+w-1) DIV 32)*4 + al; al := (x DIV 32)*4 + al;
     IF ar = al THEN
       mid := {(x MOD 32) .. ((x+w-1) MOD 32)};
       FOR a1 := al TO al + (h-1)*128 BY 128 DO
-        SYSTEM.GET(a1, pix); SYSTEM.GET(pta0, ptw); SYSTEM.PUT(a1, (pix - mid) + (pix/ptw * mid)); INC(pta0, 4);
+        SYSTEM.GETS(a1, pix); SYSTEM.GETS(pta0, ptw); SYSTEM.PUTS(a1, (pix - mid) + (pix/ptw * mid)); INC(pta0, 4);
         IF pta0 = pta1 THEN pta0 := patadr+4 END
       END
     ELSIF ar > al THEN
       left := {(x MOD 32) .. 31}; right := {0 .. ((x+w-1) MOD 32)};
       FOR a0 := al TO al + (h-1)*128 BY 128 DO
-        SYSTEM.GET(a0, pixl); SYSTEM.GET(pta0, ptw); SYSTEM.PUT(a0, (pixl - left) + (pixl/ptw * left));
-        FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.GET(a1, pix); SYSTEM.PUT(a1, pix/ptw) END ;
-        SYSTEM.GET(ar, pixr); SYSTEM.PUT(ar, (pixr - right) + (pixr/ptw * right));
+        SYSTEM.GETS(a0, pixl); SYSTEM.GETS(pta0, ptw); SYSTEM.PUTS(a0, (pixl - left) + (pixl/ptw * left));
+        FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.GETS(a1, pix); SYSTEM.PUTS(a1, pix/ptw) END ;
+        SYSTEM.GETS(ar, pixr); SYSTEM.PUTS(ar, (pixr - right) + (pixr/ptw * right));
         INC(pta0, 4); INC(ar, 128);
         IF pta0 = pta1 THEN pta0 := patadr+4 END
       END
@@ -180,11 +180,11 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   END ReplPattern;
 
 BEGIN Base := base; Width := 1024; Height := 768;
-  arrow := SYSTEM.ADR($0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00$);
-  star := SYSTEM.ADR($0F0F 8000 8220 8410 8808 9004 A002 C001 7F7F C001 A002 9004 8808 8410 8220 8000$);
-  hook := SYSTEM.ADR($0C0C 070F 8707 C703 E701 F700 7F00 3F00 1F00 0F00 0700 0300 01$);
-  updown := SYSTEM.ADR($080E 183C 7EFF 1818 1818 1818 FF7E3C18$);
-  block := SYSTEM.ADR($0808 FFFF C3C3 C3C3 FFFF$);
-  cross := SYSTEM.ADR($0F0F 0140 0220 0410 0808 1004 2002 4001 0000 4001 2002 1004 0808 0410 0220 0140$);
-  grey := SYSTEM.ADR($2002 0000 5555 5555 AAAA AAAA$)
+  arrow := $0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00$;
+  star := $0F0F 8000 8220 8410 8808 9004 A002 C001 7F7F C001 A002 9004 8808 8410 8220 8000$;
+  hook := $0C0C 070F 8707 C703 E701 F700 7F00 3F00 1F00 0F00 0700 0300 01$;
+  updown := $080E 183C 7EFF 1818 1818 1818 FF7E3C18$;
+  block := $0808 FFFF C3C3 C3C3 FFFF$;
+  cross := $0F0F 0140 0220 0410 0808 1004 2002 4001 0000 4001 2002 1004 0808 0410 0220 0140$;
+  grey := $2002 0000 5555 5555 AAAA AAAA$
 END Display.

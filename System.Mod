@@ -340,13 +340,13 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
         Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y); T := TextFrames.Text("");
         V := MenuViewers.New(TextFrames.NewMenu("System.Commands", StandardMenu),
             TextFrames.NewText(T, 0), TextFrames.menuH, X, Y);
-        comadr := M.cmd; SYSTEM.GET(comadr, ch); INC(comadr);
+        comadr := M.cmd; SYSTEM.GETB(comadr, ch); INC(comadr);
         WHILE ch # 0X DO
           Texts.WriteString(W, S.s); Texts.Write(W, ".");
-          REPEAT Texts.Write(W, ch); SYSTEM.GET(comadr, ch); INC(comadr)
+          REPEAT Texts.Write(W, ch); SYSTEM.GETB(comadr, ch); INC(comadr)
           UNTIL ch = 0X;
           WHILE comadr MOD 4 # 0 DO INC(comadr) END ;
-          Texts.WriteLn(W); INC(comadr, 4); SYSTEM.GET(comadr, ch); INC(comadr)
+          Texts.WriteLn(W); INC(comadr, 4); SYSTEM.GETB(comadr, ch); INC(comadr)
         END ;
         Texts.Append(T, W.buf)
       END
@@ -395,7 +395,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
     VAR u, v, w: INTEGER; mod: Modules.Module;
-  BEGIN u := SYSTEM.REG(15); SYSTEM.GET(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
+  BEGIN u := SYSTEM.REG(15); SYSTEM.GETI(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
     IF w = 0 THEN Kernel.New(a, b)
     ELSE (*trap*) Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteInt(W, v DIV 100H MOD 10000H, 4);
       Texts.WriteString(W, "  TRAP"); Texts.WriteInt(W, w, 4); mod := Modules.root;
@@ -414,5 +414,5 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   
 BEGIN Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
-  Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);
+  Kernel.Install(ADR(Trap), 20H); Kernel.Install(ADR(Abort), 0);
 END System.

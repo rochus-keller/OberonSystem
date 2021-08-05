@@ -85,97 +85,97 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
         WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END ;
         IF mod = NIL THEN (*no large enough hole was found*)
           IF AllocPtr + size < limit THEN (*allocate*)
-            p := AllocPtr; mod := SYSTEM.VAL(Module, p);
+            p := AllocPtr; mod := VAL(Module, p);
             AllocPtr := (p + size + 100H) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
             mod.next := root; root := mod
           ELSE error(7, name1)
           END
-        ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
+        ELSE (*fill hole*) p := VAL(INTEGER, mod)
         END
       END ; 
       IF res = 0 THEN (*read file*)
         INC(p, DescSize); (*allocate descriptor*)
         mod.name := name; mod.key := key; mod.refcnt := 0;
         mod.data := p;  (*data*)
-        SYSTEM.PUT(mod.num * 4 + MTOrg, p);  (*module table entry*)
+        SYSTEM.PUTI(mod.num * 4 + MTOrg, p);  (*module table entry*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;  (*type descriptors*)
+        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUTI(p, w); INC(p, 4); DEC(n, 4) END ;  (*type descriptors*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO SYSTEM.PUT(p, 0); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
+        WHILE n > 0 DO SYSTEM.PUTI(p, 0); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
+        WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUTB(p, ch); INC(p); DEC(n) END ;   (*strings*)
         mod.code := p;  (*program*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
+        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUTI(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
         mod.imp := p;  (*copy imports*)
         i := 0;
         WHILE i < nofimps DO
-          SYSTEM.PUT(p, import[i]); INC(p, 4); INC(i)
+          SYSTEM.PUTB(p, import[i]); INC(p, 4); INC(i)
         END ;
         mod.cmd := p;  (*commands*) Files.Read(R, ch);
         WHILE ch # 0X DO
-          REPEAT SYSTEM.PUT(p, ch); INC(p); Files.Read(R, ch) UNTIL ch = 0X;
-          REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
-          Files.ReadInt(R, n); SYSTEM.PUT(p, n); INC(p, 4); Files.Read(R, ch)
+          REPEAT SYSTEM.PUTB(p, ch); INC(p); Files.Read(R, ch) UNTIL ch = 0X;
+          REPEAT SYSTEM.PUTB(p, 0X); INC(p) UNTIL p MOD 4 = 0;
+          Files.ReadInt(R, n); SYSTEM.PUTI(p, n); INC(p, 4); Files.Read(R, ch)
         END ;
-        REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
+        REPEAT SYSTEM.PUTB(p, 0X); INC(p) UNTIL p MOD 4 = 0;
         mod.ent := p;  (*entries*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;
+        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUTI(p, w); INC(p, 4); DEC(n) END ;
         mod.ptr := p;  (*pointer references*)
         Files.ReadInt(R, w);
-        WHILE w >= 0 DO SYSTEM.PUT(p, mod.data + w); INC(p, 4); Files.ReadInt(R, w) END ;
-        SYSTEM.PUT(p, 0); INC(p, 4);
+        WHILE w >= 0 DO SYSTEM.PUTI(p, mod.data + w); INC(p, 4); Files.ReadInt(R, w) END ;
+        SYSTEM.PUTI(p, 0); INC(p, 4);
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT);
-        Files.ReadInt(R, w); body := SYSTEM.VAL(Command, mod.code + w);
+        Files.ReadInt(R, w); body := VAL(Command, mod.code + w);
         Files.Read(R, ch);
         IF ch # "O" THEN (*corrupted file*)  mod := NIL; error(4, name) END
       END ;
       IF res = 0 THEN (*fixup of BL*)
         adr := mod.code + fixorgP*4;
         WHILE adr # mod.code DO
-          SYSTEM.GET(adr, inst);
+          SYSTEM.GETI(adr, inst);
           mno := inst DIV 100000H MOD 10H;
           pno := inst DIV 1000H MOD 100H;
           disp := inst MOD 1000H;
-          SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
-          SYSTEM.GET(impmod.ent + pno*4, dest); dest := dest + impmod.code;
+          SYSTEM.GETB(mod.imp + (mno-1)*4, impmod);
+          SYSTEM.GETI(impmod.ent + pno*4, dest); dest := dest + impmod.code;
           offset := (dest - adr - 4) DIV 4;
-          SYSTEM.PUT(adr, (offset MOD 1000000H) + 0F7000000H);
+          SYSTEM.PUTI(adr, (offset MOD 1000000H) + 0F7000000H);
           adr := adr - disp*4
         END ;
         (*fixup of LDR/STR/ADD*)
         adr := mod.code + fixorgD*4;
         WHILE adr # mod.code DO
-          SYSTEM.GET(adr, inst);
+          SYSTEM.GETI(adr, inst);
           mno := inst DIV 100000H MOD 10H;
           disp := inst MOD 1000H;
           IF mno = 0 THEN (*global*)
-            SYSTEM.PUT(adr, (inst DIV 1000000H * 10H + MT) * 100000H + mod.num * 4)
+            SYSTEM.PUTI(adr, (inst DIV 1000000H * 10H + MT) * 100000H + mod.num * 4)
           ELSE (*import*)
-            SYSTEM.GET(mod.imp + (mno-1)*4, impmod); v := impmod.num;
-            SYSTEM.PUT(adr, (inst DIV 1000000H * 10H + MT) * 100000H + v*4);
-            SYSTEM.GET(adr+4, inst); vno := inst MOD 100H;
-            SYSTEM.GET(impmod.ent + vno*4, offset);
+            SYSTEM.GETB(mod.imp + (mno-1)*4, impmod); v := impmod.num;
+            SYSTEM.PUTI(adr, (inst DIV 1000000H * 10H + MT) * 100000H + v*4);
+            SYSTEM.GETI(adr+4, inst); vno := inst MOD 100H;
+            SYSTEM.GETI(impmod.ent + vno*4, offset);
             IF ODD(inst DIV 100H) THEN offset := offset + impmod.code - impmod.data END ;
-            SYSTEM.PUT(adr+4, inst DIV 10000H * 10000H + offset)
+            SYSTEM.PUTI(adr+4, inst DIV 10000H * 10000H + offset)
           END ;
           adr := adr - disp*4
         END ;
         (*fixup of type descriptors*)
         adr := mod.data + fixorgT*4;
         WHILE adr # mod.data DO
-          SYSTEM.GET(adr, inst);
+          SYSTEM.GETI(adr, inst);
           mno := inst DIV 1000000H MOD 10H;
           vno := inst DIV 1000H MOD 1000H;
           disp := inst MOD 1000H;
           IF mno = 0 THEN (*global*) inst := mod.data + vno
           ELSE (*import*)
-            SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
-            SYSTEM.GET(impmod.ent + vno*4, offset);
+            SYSTEM.GETI(mod.imp + (mno-1)*4, impmod);
+            SYSTEM.GETI(impmod.ent + vno*4, offset);
             inst := impmod.data + offset
           END ;
-          SYSTEM.PUT(adr, inst); adr := adr - disp*4
+          SYSTEM.PUTI(adr, inst); adr := adr - disp*4
         END ;
         body   (*initialize module*)
       ELSIF res = 3 THEN importing := name;
@@ -190,16 +190,16 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
       s: ARRAY 32 OF CHAR;
   BEGIN res := 5; w := 0;
     IF mod # NIL THEN
-      adr := mod.cmd; SYSTEM.GET(adr, ch);
+      adr := mod.cmd; SYSTEM.GETB(adr, ch);
       WHILE (ch # 0X) & (res # 0) DO k := 0; (*read command name*)
-        REPEAT s[k] := ch; INC(k); INC(adr); SYSTEM.GET(adr, ch) UNTIL ch = 0X;
+        REPEAT s[k] := ch; INC(k); INC(adr); SYSTEM.GETB(adr, ch) UNTIL ch = 0X;
         s[k] := 0X;
         REPEAT INC(adr) UNTIL adr MOD 4 = 0;
-        SYSTEM.GET(adr, k); INC(adr, 4);
-        IF s = name THEN res := 0; w := mod.code + k ELSE SYSTEM.GET(adr, ch) END
+        SYSTEM.GETI(adr, k); INC(adr, 4);
+        IF s = name THEN res := 0; w := mod.code + k ELSE SYSTEM.GETB(adr, ch) END
       END
-    END
-    RETURN SYSTEM.VAL(Command, w)
+    END;
+    RETURN VAL(Command, w)
   END ThisCommand;
 
   PROCEDURE Free*(name: ARRAY OF CHAR);
@@ -209,7 +209,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
     IF mod # NIL THEN
       IF mod.refcnt = 0 THEN
         mod.name[0] := 0X; p := mod.imp; q := mod.cmd;
-        WHILE p < q DO SYSTEM.GET(p, imp); DEC(imp.refcnt); INC(p, 4) END ;
+        WHILE p < q DO SYSTEM.GETB(p, imp); DEC(imp.refcnt); INC(p, 4) END ;
       ELSE res := 1
       END
     END
@@ -217,7 +217,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
 
   PROCEDURE Init*;
   BEGIN Files.Init; MTOrg := SYSTEM.REG(MT);
-    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H)
+    SYSTEM.GETI(16, AllocPtr); SYSTEM.GETB(20, root); SYSTEM.GETI(24, limit); DEC(limit, 8000H)
   END Init;
 
 BEGIN Init; Load("Oberon", M);

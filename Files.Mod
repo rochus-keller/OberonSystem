@@ -26,7 +26,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       END ;
 
     FileDesc =
-      RECORD next: INTEGER; (*list of files invisible to the GC*)
+      RECORD next: File; (*list of files invisible to the GC*)
         nofbufs, aleng, bleng: INTEGER;
         modH, registered: BOOLEAN;
         firstbuf: Buffer;
@@ -56,7 +56,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       0 <= apos <= aleng < PgTabSize
       (apos < aleng) & (lim = SS) OR (apos = aleng) *)
 
-  VAR root: INTEGER (*File*);  (*list of open files*)
+  VAR root: File;  (*list of open files*)
 
   PROCEDURE Check(s: ARRAY OF CHAR;
         VAR name: FileDir.FileName; VAR res: INTEGER);
@@ -88,11 +88,11 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     IF res = 0 THEN
       FileDir.Search(namebuf, header);
       IF header # 0 THEN
-        f := SYSTEM.VAL(File, root);
-        WHILE (f # NIL) & (f.sec[0] # header) DO f := SYSTEM.VAL(File, f.next) END ;
+        f := root;
+        WHILE (f # NIL) & (f.sec[0] # header) DO f := f.next END ;
         IF f = NIL THEN (*file not yet present*)
           NEW(buf); buf.apos := 0; buf.next := buf; buf.mod := FALSE;
-          F := SYSTEM.VAL(FileDir.FileHd, SYSTEM.ADR(buf.data));
+          F := VAL(FileDir.FileHd, ADR(buf.data));
           Kernel.GetSector(header, buf.data); ASSERT(F.mark = FileDir.HeaderMark);
           NEW(f); f.aleng := F.aleng; f.bleng := F.bleng; f.date := F.date;
           IF f.aleng = 0 THEN buf.lim := f.bleng ELSE buf.lim := SS END ;
@@ -104,7 +104,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
             Kernel.GetSector(inxpg.adr, inxpg.sec); f.ext[i] := inxpg; INC(i)
           END ;
           WHILE i < FileDir.ExTabSize DO f.ext[i] := NIL; INC(i) END ;
-          f.sechint := header; f.modH := FALSE; f.next := root; root := SYSTEM.VAL(INTEGER, f)
+          f.sechint := header; f.modH := FALSE; f.next := root; root := f
         END
       END
     END ;
@@ -120,7 +120,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   BEGIN f := NIL; Check(name, namebuf, res);
     IF res <= 0 THEN
       NEW(buf); buf.apos := 0; buf.mod := TRUE; buf.lim := HS; buf.next := buf;
-      F := SYSTEM.VAL(FileDir.FileHd, SYSTEM.ADR(buf.data));
+      F := VAL(FileDir.FileHd, ADR(buf.data));
       F.mark := FileDir.HeaderMark;
       F.aleng := 0; F.bleng := HS; F.name := namebuf;
       F.date := Kernel.Clock();
@@ -164,7 +164,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         f.modH := TRUE; f.sec[buf.apos] := secadr; f.sechint := secadr
       END ;
       IF buf.apos = 0 THEN
-        UpdateHeader(f, SYSTEM.VAL(FileDir.FileHeader, buf.data)); f.modH := FALSE
+        UpdateHeader(f, VAL(FileDir.FileHeader, buf.data)); f.modH := FALSE
       END
     ELSE i := (buf.apos - STS) DIV XS; inx := f.ext[i];
       IF inx = NIL THEN
@@ -233,7 +233,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     IF (f # NIL) & (f.name[0] # 0X) THEN
       Unbuffer(f);
       IF ~f.registered THEN
-        FileDir.Insert(f.name, f.sec[0]); f.registered := TRUE; f.next := root; root := SYSTEM.VAL(INTEGER, f)
+        FileDir.Insert(f.name, f.sec[0]); f.registered := TRUE; f.next := root; root := f
       END
     END
   END Register;
@@ -368,12 +368,12 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
 
   PROCEDURE ReadSet*(VAR R: Rider; VAR s: SET);
     VAR n: INTEGER;
-  BEGIN ReadInt(R, SYSTEM.VAL(INTEGER, s))
+  BEGIN ReadInt(R, n); s := VAL(SET,n)
   END ReadSet;
 
   PROCEDURE ReadReal*(VAR R: Rider; VAR x: REAL);
     VAR n: INTEGER;
-  BEGIN ReadInt(R, SYSTEM.VAL(INTEGER, x))
+  BEGIN ReadInt(R, n); x := n
   END ReadReal;
 
   PROCEDURE ReadString*(VAR R: Rider; VAR x: ARRAY OF CHAR);
@@ -480,7 +480,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   (*---------------------------System use---------------------------*)
 
   PROCEDURE Init*;
-  BEGIN root := 0; Kernel.Init; FileDir.Init
+  BEGIN root := NIL; Kernel.Init; FileDir.Init
   END Init;
 
   PROCEDURE RestoreList*; (*after mark phase of garbage collection*)
@@ -489,17 +489,17 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     PROCEDURE mark(f: INTEGER): INTEGER;
       VAR m: INTEGER;
     BEGIN
-      IF f = 0 THEN m := -1 ELSE SYSTEM.GET(f-4, m) END ;
+      IF f = 0 THEN m := -1 ELSE SYSTEM.GETI(f-4, m) END ;
       RETURN m
     END mark;
 
   BEGIN (*field "next" has offset 0*)
-    WHILE mark(root) = 0 DO SYSTEM.GET(root, root) END ;
+    WHILE mark(root) = 0 DO SYSTEM.GETI(root, root) END ;
     f := root;
     WHILE f # 0 DO
       f0 := f;
-      REPEAT SYSTEM.GET(f0, f0) UNTIL mark(f0) # 0;
-      SYSTEM.PUT(f, f0); f := f0
+      REPEAT SYSTEM.GETI(f0, f0) UNTIL mark(f0) # 0;
+      SYSTEM.PUTI(f, f0); f := f0
     END
   END RestoreList;
 

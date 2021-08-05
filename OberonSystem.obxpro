@@ -6,6 +6,9 @@ MainProc=@ByteArray()
 Suffixes=@Invalid()
 WorkingDir=
 
+[.]
+size=0
+
 [Modules]
 1\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Display.Mod
 1\RelPath=Display.Mod
@@ -19,6 +22,8 @@ WorkingDir=
 13\RelPath=Texts.Mod
 14\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Viewers.Mod
 14\RelPath=Viewers.Mod
+15\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/SYSTEM.obx
+15\RelPath=SYSTEM.obx
 2\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Edit.Mod
 2\RelPath=Edit.Mod
 3\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/FileDir.Mod
@@ -35,8 +40,9 @@ WorkingDir=
 8\RelPath=MenuViewers.Mod
 9\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Modules.Mod
 9\RelPath=Modules.Mod
-size=14
+size=15
 
 [Packages]
 1\Name=@ByteArray()
-size=1
+2\Name=@ByteArray()
+size=2
