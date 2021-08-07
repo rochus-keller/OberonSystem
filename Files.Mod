@@ -92,7 +92,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         WHILE (f # NIL) & (f.sec[0] # header) DO f := f.next END ;
         IF f = NIL THEN (*file not yet present*)
           NEW(buf); buf.apos := 0; buf.next := buf; buf.mod := FALSE;
-          F := VAL(FileDir.FileHd, ADR(buf.data));
+          // TODO F := VAL(FileDir.FileHd, ADR(buf.data));
           Kernel.GetSector(header, buf.data); ASSERT(F.mark = FileDir.HeaderMark);
           NEW(f); f.aleng := F.aleng; f.bleng := F.bleng; f.date := F.date;
           IF f.aleng = 0 THEN buf.lim := f.bleng ELSE buf.lim := SS END ;
@@ -120,7 +120,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   BEGIN f := NIL; Check(name, namebuf, res);
     IF res <= 0 THEN
       NEW(buf); buf.apos := 0; buf.mod := TRUE; buf.lim := HS; buf.next := buf;
-      F := VAL(FileDir.FileHd, ADR(buf.data));
+      // TODO F := VAL(FileDir.FileHd, ADR(buf.data));
       F.mark := FileDir.HeaderMark;
       F.aleng := 0; F.bleng := HS; F.name := namebuf;
       F.date := Kernel.Clock();
@@ -164,7 +164,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         f.modH := TRUE; f.sec[buf.apos] := secadr; f.sechint := secadr
       END ;
       IF buf.apos = 0 THEN
-        UpdateHeader(f, VAL(FileDir.FileHeader, buf.data)); f.modH := FALSE
+        // TODO UpdateHeader(f, VAL(FileDir.FileHeader, buf.data)); f.modH := FALSE
       END
     ELSE i := (buf.apos - STS) DIV XS; inx := f.ext[i];
       IF inx = NIL THEN
@@ -484,6 +484,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END Init;
 
   PROCEDURE RestoreList*; (*after mark phase of garbage collection*)
+  (* TODO
     VAR f, f0: INTEGER;
 
     PROCEDURE mark(f: INTEGER): INTEGER;
@@ -500,7 +501,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       f0 := f;
       REPEAT SYSTEM.GETI(f0, f0) UNTIL mark(f0) # 0;
       SYSTEM.PUTI(f, f0); f := f0
-    END
+    END *)
   END RestoreList;
 
 END Files.

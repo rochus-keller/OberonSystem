@@ -1,9 +1,9 @@
 MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
-  IMPORT SYSTEM;
+  IMPORT OBX;
 
   CONST black* = 0; white* = 1;  (*black = background*)
     replace* = 0; paint* = 1; invert* = 2;  (*modes*)
-    base = 0E7F00H;  (*adr of 1024 x 768 pixel, monocolor display frame*)
+    base = 0;  (*original 0E7F00H, adr of 1024 x 768 pixel, monocolor display frame*)
 
   TYPE Frame* = POINTER TO FrameDesc;
     FrameMsg* = RECORD END ;
@@ -16,6 +16,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   VAR Base*, Width*, Height*: INTEGER;
     arrow*, star*, hook*, updown*, block*, cross*, grey*: ARRAY 255 OF BYTE;
     (*a pattern is an array of bytes; the first is its width (< 32), the second its height, the rest the raster*)
+	 raster : UNSAFE POINTER TO CARRAY OF INTEGER (* display buffer *)
 
   PROCEDURE Handle*(F: Frame; VAR M: FrameMsg);
   BEGIN
@@ -27,11 +28,11 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   PROCEDURE Dot*(col, x, y, mode: INTEGER);
     VAR a: INTEGER; u, s: SET;
   BEGIN a := base + (x DIV 32)*4 + y*128;
-    s := {x MOD 32}; SYSTEM.GETS(a, u);
-    IF mode = paint THEN SYSTEM.PUTS(a, u + s)
-    ELSIF mode = invert THEN SYSTEM.PUTS(a, u / s)
+    s := {x MOD 32}; GETS(a, u);
+    IF mode = paint THEN PUTS(a, u + s)
+    ELSIF mode = invert THEN PUTS(a, u / s)
     ELSE (*mode = replace*)
-      IF col # black THEN SYSTEM.PUTS(a, u + s) ELSE SYSTEM.PUTS(a, u - s) END
+      IF col # black THEN PUTS(a, u + s) ELSE PUTS(a, u - s) END
     END
   END Dot;
 
@@ -42,28 +43,28 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
     IF ar = al THEN
       mid := {(x MOD 32) .. ((x+w-1) MOD 32)};
       FOR a1 := al TO al + (h-1)*128 BY 128 DO
-        SYSTEM.GETS(a1, pix);
-        IF mode = invert THEN SYSTEM.PUTS(a1, pix / mid)
-        ELSIF (mode = replace) & (col = black) THEN (*erase*) SYSTEM.PUTS(a1, pix - mid)
-        ELSE (* (mode = paint) OR (mode = replace) & (col # black) *) SYSTEM.PUTS(a1, pix + mid)
+        GETS(a1, pix);
+        IF mode = invert THEN PUTS(a1, pix / mid)
+        ELSIF (mode = replace) & (col = black) THEN (*erase*) PUTS(a1, pix - mid)
+        ELSE (* (mode = paint) OR (mode = replace) & (col # black) *) PUTS(a1, pix + mid)
         END
       END
     ELSIF ar > al THEN
       left := {(x MOD 32) .. 31}; right := {0 .. ((x+w-1) MOD 32)};
       FOR a0 := al TO al + (h-1)*128 BY 128 DO
-        SYSTEM.GETS(a0, pixl); SYSTEM.GETS(ar, pixr);
+        GETS(a0, pixl); GETS(ar, pixr);
         IF mode = invert THEN
-          SYSTEM.PUTS(a0, pixl / left);
-          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.GETS(a1, pix); SYSTEM.PUTS(a1, -pix) END ;
-          SYSTEM.PUTS(ar, pixr / right)
+          PUTS(a0, pixl / left);
+          FOR a1 := a0+4 TO ar-4 BY 4 DO GETS(a1, pix); PUTS(a1, -pix) END ;
+          PUTS(ar, pixr / right)
         ELSIF (mode = replace) & (col = black) THEN (*erase*)
-          SYSTEM.PUTS(a0, pixl - left);
-          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.PUTS(a1, {}) END ;
-          SYSTEM.PUTS(ar, pixr - right)
+          PUTS(a0, pixl - left);
+          FOR a1 := a0+4 TO ar-4 BY 4 DO PUTS(a1, {}) END ;
+          PUTS(ar, pixr - right)
         ELSE (* (mode = paint) OR (mode = replace) & (col # black) *)
-          SYSTEM.PUTS(a0, pixl + left);
-          FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.PUTS(a1, {0 .. 31}) END ;
-          SYSTEM.PUTS(ar, pixr + right)
+          PUTS(a0, pixl + left);
+          FOR a1 := a0+4 TO ar-4 BY 4 DO PUTS(a1, {0 .. 31}) END ;
+          PUTS(ar, pixr + right)
         END ;
         INC(ar, 128)
       END
@@ -83,14 +84,14 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
           IF w > 24 THEN pbt := patadr[i]; INC(i); pwd := pbt*1000000H + pwd END
         END
       END ;
-      SYSTEM.GETS(a0, pix);
-      IF mode = invert THEN SYSTEM.PUTS(a0, VAL(SET, LSL(pwd, x MOD 32)) / pix)
-      ELSE SYSTEM.PUTS(a0, VAL(SET, LSL(pwd, x MOD 32)) + pix)
+      GETS(a0, pix);
+      IF mode = invert THEN PUTS(a0, VAL(SET, LSL(pwd, x MOD 32)) / pix)
+      ELSE PUTS(a0, VAL(SET, LSL(pwd, x MOD 32)) + pix)
       END ;
       IF (x MOD 32) + w > 32 THEN (*spill over*)
-        SYSTEM.GETS(a0+4, pix);
-        IF mode = invert THEN SYSTEM.PUTS(a0+4, VAL(SET, ASR(pwd, -(x MOD 32))) / pix)
-        ELSE SYSTEM.PUTS(a0+4, VAL(SET, ASR(pwd, -(x MOD 32))) + pix)
+        GETS(a0+4, pix);
+        IF mode = invert THEN PUTS(a0+4, VAL(SET, ASR(pwd, -(x MOD 32))) / pix)
+        ELSE PUTS(a0+4, VAL(SET, ASR(pwd, -(x MOD 32))) + pix)
         END
       END
     END
@@ -115,71 +116,87 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
     WHILE sa0 # end DO
       IF n >= 0 THEN (*shift right*) m1 := {n .. 31};
         IF v1 + w >= 32 THEN
-          SYSTEM.GETS(sa0+len, src); src := ROR(VAL(INTEGER,src), n);
-          SYSTEM.GETS(sa0+len+d, dst);
-          SYSTEM.PUTS(sa0+len+d, (dst * m2) + (src - m2));
+          GETS(sa0+len, src); src := ROR(VAL(INTEGER,src), n);
+          GETS(sa0+len+d, dst);
+          PUTS(sa0+len+d, (dst * m2) + (src - m2));
           spill := src - m1;
           FOR sa1 := sa0 + len-4 TO sa0+4  BY -4 DO
-            SYSTEM.GETS(sa1, src); src := ROR(VAL(INTEGER,src), n);
-            SYSTEM.PUTS(sa1+d, spill + (src * m1));
+            GETS(sa1, src); src := ROR(VAL(INTEGER,src), n);
+            PUTS(sa1+d, spill + (src * m1));
             spill := src - m1
           END ;
-          SYSTEM.GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
-          SYSTEM.GETS(sa0+d, dst);
-          SYSTEM.PUTS(sa0+d, (src * m0) + (dst - m0))
-        ELSE SYSTEM.GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
-          SYSTEM.GETS(sa0+d, dst);
-          SYSTEM.PUTS(sa0+d, (src * m3) + (dst - m3))
+          GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+          GETS(sa0+d, dst);
+          PUTS(sa0+d, (src * m0) + (dst - m0))
+        ELSE GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+          GETS(sa0+d, dst);
+          PUTS(sa0+d, (src * m3) + (dst - m3))
         END
       ELSE (*shift left*) m1 := {-n .. 31};
-        SYSTEM.GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
-        SYSTEM.GETS(sa0+d, dst);
+        GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+        GETS(sa0+d, dst);
         IF v1 + w < 32 THEN
-          SYSTEM.PUTS(sa0+d, (dst - m3) + (src * m3))
-        ELSE SYSTEM.PUTS(sa0+d, (dst - m0) + (src * m0));
+          PUTS(sa0+d, (dst - m3) + (src * m3))
+        ELSE PUTS(sa0+d, (dst - m0) + (src * m0));
           spill := src - m1;
           FOR sa1 := sa0+4 TO sa0 + len-4 BY 4 DO
-            SYSTEM.GETS(sa1, src); src := ROR(VAL(INTEGER,src), n);
-            SYSTEM.PUTS(sa1+d, spill + (src * m1));
+            GETS(sa1, src); src := ROR(VAL(INTEGER,src), n);
+            PUTS(sa1+d, spill + (src * m1));
             spill := src - m1
           END ;
-          SYSTEM.GETS(sa0+len, src); src := ROR(VAL(INTEGER,src), n);
-          SYSTEM.GETS(sa0+len+d, dst);
-          SYSTEM.PUTS(sa0+len+d, (src - m2) + (dst * m2))
+          GETS(sa0+len, src); src := ROR(VAL(INTEGER,src), n);
+          GETS(sa0+len+d, dst);
+          PUTS(sa0+len+d, (src - m2) + (dst * m2))
         END
       END ;
       INC(sa0, step)
     END
   END CopyBlock;
 
+  (* TO BE MIGRATED
   PROCEDURE ReplPattern*(col, patadr, x, y, w, h, mode: INTEGER);
   (* pattern width = 32, fixed; pattern starts at patadr+4, for mode = invert only *)
     VAR al, ar, a0, a1: INTEGER;
       pta0, pta1: INTEGER;  (*pattern addresses*)
       ph: BYTE;
       left, right, mid, pix, pixl, pixr, ptw: SET;
-  BEGIN al := base + y*128; SYSTEM.GETB(patadr+1, ph);
+  BEGIN al := base + y*128; GETB(patadr+1, ph);
     pta0 := patadr+4; pta1 := ph*4 + pta0;
     ar := ((x+w-1) DIV 32)*4 + al; al := (x DIV 32)*4 + al;
     IF ar = al THEN
       mid := {(x MOD 32) .. ((x+w-1) MOD 32)};
       FOR a1 := al TO al + (h-1)*128 BY 128 DO
-        SYSTEM.GETS(a1, pix); SYSTEM.GETS(pta0, ptw); SYSTEM.PUTS(a1, (pix - mid) + (pix/ptw * mid)); INC(pta0, 4);
+        GETS(a1, pix); GETS(pta0, ptw); PUTS(a1, (pix - mid) + (pix/ptw * mid)); INC(pta0, 4);
         IF pta0 = pta1 THEN pta0 := patadr+4 END
       END
     ELSIF ar > al THEN
       left := {(x MOD 32) .. 31}; right := {0 .. ((x+w-1) MOD 32)};
       FOR a0 := al TO al + (h-1)*128 BY 128 DO
-        SYSTEM.GETS(a0, pixl); SYSTEM.GETS(pta0, ptw); SYSTEM.PUTS(a0, (pixl - left) + (pixl/ptw * left));
-        FOR a1 := a0+4 TO ar-4 BY 4 DO SYSTEM.GETS(a1, pix); SYSTEM.PUTS(a1, pix/ptw) END ;
-        SYSTEM.GETS(ar, pixr); SYSTEM.PUTS(ar, (pixr - right) + (pixr/ptw * right));
+        GETS(a0, pixl); GETS(pta0, ptw); PUTS(a0, (pixl - left) + (pixl/ptw * left));
+        FOR a1 := a0+4 TO ar-4 BY 4 DO GETS(a1, pix); PUTS(a1, pix/ptw) END ;
+        GETS(ar, pixr); PUTS(ar, (pixr - right) + (pixr/ptw * right));
         INC(pta0, 4); INC(ar, 128);
         IF pta0 = pta1 THEN pta0 := patadr+4 END
       END
     END
   END ReplPattern;
+  *)
+  
+  	PROCEDURE GETS( a: INTEGER; VAR v: SET )
+	BEGIN
+		a := ( a - base ) DIV 4;
+		v := raster[a] // TODO: why does this work without BITS?
+	END GETS;
+
+	PROCEDURE PUTS( a: INTEGER; x: SET )
+	BEGIN
+		a := ( a - base ) DIV 4;
+		raster[a] := ORD(x)
+	END PUTS;
+
 
 BEGIN Base := base; Width := 1024; Height := 768;
+  raster := OBX.createRasterBuffer( Width DIV 32 * Height );
   arrow := $0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00$;
   star := $0F0F 8000 8220 8410 8808 9004 A002 C001 7F7F C001 A002 9004 8808 8410 8220 8000$;
   hook := $0C0C 070F 8707 C703 E701 F700 7F00 3F00 1F00 0F00 0700 0300 01$;

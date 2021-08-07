@@ -1,10 +1,4 @@
 module SYSTEM
-
-	proc GETS*( a: integer; var v: set )
-	end GETS
-
-	proc PUTS*( a: integer; x: set )
-	end PUTS
 	
 	proc GETI*( a: integer; var v: integer )
 	end GETI
@@ -15,10 +9,9 @@ module SYSTEM
 	proc GETB*( a: integer; var v: byte )
 	end GETB
  
- 	proc PUTB*( a: integer; x: byte )
-	end PUTB
 	
 	proc REG*( r: integer ): integer
+	   return 0
 	end REG
 	
 	proc LDREG*( r, a: integer)
@@ -28,6 +21,7 @@ module SYSTEM
 	end BIT
 	
 	proc H*(i: integer): integer
+		return 0
 	end H
 	
 end SYSTEM

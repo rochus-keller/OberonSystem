@@ -414,5 +414,5 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   
 BEGIN Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
-  Kernel.Install(ADR(Trap), 20H); Kernel.Install(ADR(Abort), 0);
+  // TODO Kernel.Install(ADR(Trap), 20H); Kernel.Install(ADR(Abort), 0);
 END System.
