@@ -4,7 +4,7 @@ BuiltInObSysInner=false
 MainModule=@ByteArray()
 MainProc=@ByteArray()
 Suffixes=@Invalid()
-WorkingDir=
+WorkingDir=/home/me/Entwicklung/Modules/OberonSystem/Files
 
 [.]
 size=0
@@ -22,10 +22,10 @@ size=0
 13\RelPath=Texts.Mod
 14\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Viewers.Mod
 14\RelPath=Viewers.Mod
-15\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/SYS.obx
-15\RelPath=SYS.obx
-16\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/OBX.obx
-16\RelPath=OBX.obx
+15\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/OBX.obx
+15\RelPath=OBX.obx
+16\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Backend.obx
+16\RelPath=Backend.obx
 2\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Edit.Mod
 2\RelPath=Edit.Mod
 3\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/FileDir.Mod

@@ -1,0 +1,36 @@
+module Backend
+
+	import OBX
+	
+	proc running*(): boolean
+	begin
+		OBX.processEvents()
+		return true
+	end running
+	
+	proc initDisplay*(length: integer): *[]integer
+	begin
+		return OBX.createRasterBuffer(length)
+	end initDisplay
+	
+	proc time*(): integer
+	begin
+		return OBX.getTime()
+	end time
+	
+	type
+		FileNames* = pointer to array of array 32 of char
+		
+	proc listFiles*():FileNames
+     var f: FileNames
+	     n, i: integer
+	begin
+		n := OBX.listFiles()
+		new(f,n)
+		for i := 0 to n-1 do
+			f[i] := OBX.fileName(i)
+		end
+		return f
+	end listFiles
+
+end Backend

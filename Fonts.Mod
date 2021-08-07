@@ -1,5 +1,5 @@
 MODULE Fonts; (*JG 18.11.90; PDR 8.6.12; NW 25.3.2013*)
-  IMPORT SYSTEM, Files;
+  IMPORT SYSTEM, Files, Display;
 
   CONST FontFileId = 0DBH;
 
@@ -20,10 +20,13 @@ MODULE Fonts; (*JG 18.11.90; PDR 8.6.12; NW 25.3.2013*)
 
 VAR Default*, root*: Font;
 
-PROCEDURE GetPat*(fnt: Font; ch: CHAR; VAR dx, x, y, w, h, patadr: INTEGER);
-  VAR pa: INTEGER;  dxb, xb, yb, wb, hb: BYTE;
-BEGIN pa := fnt.T[ORD(ch) MOD 80H]; patadr := pa;
-  SYSTEM.GETB(pa-3, dxb); SYSTEM.GETB(pa-2, xb); SYSTEM.GETB(pa-1, yb); SYSTEM.GETB(pa, wb); SYSTEM.GETB(pa+1, hb);
+PROCEDURE GetPat*(fnt: Font; ch: CHAR; VAR dx, x, y, w, h: INTEGER; VAR patadr: Display.Pattern);
+	// TODO: replace patadr by pointer to byte
+  VAR pa, i: INTEGER;  dxb, xb, yb, wb, hb: BYTE;
+BEGIN pa := fnt.T[ORD(ch) MOD 80H];
+  dxb := fnt.raster[pa-3]; xb := fnt.raster[pa-2]; yb := fnt.raster[pa-1]; 
+  wb := fnt.raster[pa]; hb := fnt.raster[pa+1];
+  FOR i := 0 TO (wb * hb)+2-1 DO patadr[i] := fnt.raster[pa+i] END;// copy w and h and all raster bytes
   dx := dxb; x := xb; y := yb; w := wb; h := hb;
   IF yb < 128 THEN y := yb ELSE y := yb - 256 END
 END GetPat;
@@ -84,9 +87,9 @@ BEGIN F := root;
         (*null pattern for characters not in a run*)
         a0 := 2; a := a0+3; j := 0; k := 0; m := 0;
         WHILE k < NofRuns DO
-          WHILE (m < run[k].beg) & (m < 128) DO F.T[m] := F.raster[a0]; INC(m) END;
+          WHILE (m < run[k].beg) & (m < 128) DO F.T[m] := a0; INC(m) END;
           WHILE (m < run[k].end) & (m < 128) DO
-            F.T[m] := F.raster[a+3];
+            F.T[m] := a+3; // T[m] points to w,h,... of the font pattern
             F.raster[a] := box[j].dx; F.raster[a+1] := box[j].x; F.raster[a+2] := box[j].y;
             F.raster[a+3] := box[j].w; F.raster[a+4] := box[j].h; INC(a, 5);
             n := (box[j].w + 7) DIV 8 * box[j].h;
@@ -95,7 +98,7 @@ BEGIN F := root;
           END;
           INC(k)
         END;
-        WHILE m < 128 DO F.T[m] := F.raster[a0]; INC(m) END ;
+        WHILE m < 128 DO F.T[m] := a0; INC(m) END ;
         F.next := root; root := F
       ELSE (*bad file id*) F := Default
       END

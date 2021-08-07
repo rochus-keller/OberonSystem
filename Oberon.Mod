@@ -1,5 +1,5 @@
 MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
-  IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts;
+  IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts, Backend;
 
   CONST (*message ids*)
     consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
@@ -387,13 +387,14 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
           CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
         END
       END
-    UNTIL FALSE
+    UNTIL ~Backend.running()
   END Loop;
 
   PROCEDURE Reset*;
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
-    SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) Loop
+    // TODO SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) 
+    Loop
   END Reset;
 
 BEGIN User[0] := 0X;

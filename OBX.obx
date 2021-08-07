@@ -1,9 +1,14 @@
-definition OBX [ extern 'C', prefix 'ObsDisplay_' ]
+definition OBX [ extern 'C', prefix 'ObsFiles_' ]
 
-  proc createRasterBuffer(length: integer): *[]integer
-  proc getTime(): integer
+  proc createRasterBuffer(length: integer): *[]integer [prefix 'ObsDisplay_']
+  proc getTime(): integer [prefix 'ObsDisplay_']
   
-  proc readSector(sector: integer; data: *[]byte ) [prefix 'ObsFiles_']
-  proc writeSector(sector: integer; data: *[]byte ) [prefix 'ObsFiles_']
-
+  proc processEvents() [prefix 'ObxFfi_']
+  
+  proc listFiles(): integer 
+  proc fileName( i: integer ):*[]char
+  
+  type
+	  FileBuffer = *cstruct end
+  
 end OBX

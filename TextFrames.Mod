@@ -97,7 +97,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END SetChangeMark;
 
   PROCEDURE Width (VAR R: Texts.Reader; len: INTEGER): INTEGER;
-    VAR patadr, pos: INTEGER; ox, dx, x, y, w, h: INTEGER;
+    VAR patadr: Display.Pattern; pos: INTEGER; ox, dx, x, y, w, h: INTEGER;
   BEGIN pos := 0; ox := 0;
     WHILE pos < len DO
       Fonts.GetPat(R.fnt, nextCh, dx, x, y, w, h, patadr);
@@ -108,7 +108,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE DisplayLine (F: Frame; L: Line;
     VAR R: Texts.Reader; X, Y: INTEGER; len: INTEGER);
-    VAR patadr, NX,  dx, x, y, w, h: INTEGER;
+    VAR patadr: Display.Pattern; NX,  dx, x, y, w, h: INTEGER;
   BEGIN NX := F.X + F.W;
     WHILE (nextCh # CR) & (R.fnt # NIL) DO
       Fonts.GetPat(R.fnt, nextCh, dx, x, y, w, h, patadr);
@@ -256,7 +256,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE LocateString (F: Frame; x, y: INTEGER; VAR loc: Location);
     VAR R: Texts.Reader;
-      patadr, bpos, pos, lim: INTEGER;
+      patadr: Display.Pattern; bpos, pos, lim: INTEGER;
       bx, ex, ox, dx, u, v, w, h: INTEGER;
   BEGIN LocateLine(F, y, loc);
     lim := loc.org + loc.lin.len - 1;
@@ -285,7 +285,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE LocateChar (F: Frame; x, y: INTEGER; VAR loc: Location);
     VAR R: Texts.Reader;
-      patadr, pos, lim: INTEGER;
+      patadr: Display.Pattern; pos, lim: INTEGER;
       ox, dx, u, v, w, h: INTEGER;
   BEGIN LocateLine(F, y, loc);
     lim := loc.org + loc.lin.len - 1;
