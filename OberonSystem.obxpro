@@ -24,8 +24,14 @@ size=0
 14\RelPath=Viewers.Mod
 15\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/OBX.obx
 15\RelPath=OBX.obx
-16\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Backend.obx
-16\RelPath=Backend.obx
+16\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/Hennessy.Mod
+16\RelPath=Applications/Hennessy.Mod
+17\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/Hilbert.Mod
+17\RelPath=Applications/Hilbert.Mod
+18\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/Sierpinski.Mod
+18\RelPath=Applications/Sierpinski.Mod
+19\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/Stars.Mod
+19\RelPath=Applications/Stars.Mod
 2\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Edit.Mod
 2\RelPath=Edit.Mod
 3\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/FileDir.Mod
@@ -42,7 +48,7 @@ size=0
 8\RelPath=MenuViewers.Mod
 9\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Modules.Mod
 9\RelPath=Modules.Mod
-size=15
+size=19
 
 [Packages]
 1\Name=@ByteArray()
