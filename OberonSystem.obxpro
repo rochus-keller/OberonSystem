@@ -1,8 +1,8 @@
 [General]
 BuiltInOakwood=false
 BuiltInObSysInner=false
-MainModule=@ByteArray()
-MainProc=@ByteArray()
+MainModule=@ByteArray(Oberon)
+MainProc=@ByteArray(Loop)
 Suffixes=@Invalid()
 WorkingDir=/home/me/Entwicklung/Modules/OberonSystem/Files
 
@@ -42,7 +42,7 @@ size=0
 8\RelPath=MenuViewers.Mod
 9\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Modules.Mod
 9\RelPath=Modules.Mod
-size=16
+size=15
 
 [Packages]
 1\Name=@ByteArray()

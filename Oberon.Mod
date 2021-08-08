@@ -1,5 +1,5 @@
 MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
-  IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts, Backend;
+  IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts, OBX;
 
   CONST (*message ids*)
     consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
@@ -277,7 +277,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   BEGIN Par.vwr := Viewers.This(F.X, F.Y); Par.frame := F; Par.text := T; Par.pos := pos
   END SetPar;
 
-  PROCEDURE Call* (name: ARRAY OF CHAR; VAR res: INTEGER);
+  PROCEDURE Call* (IN name: ARRAY OF CHAR; VAR res: INTEGER);
     VAR mod: Modules.Module; P: Modules.Command;
       i, j: INTEGER; ch: CHAR;
       Mname, Cname: ARRAY 32 OF CHAR;
@@ -291,7 +291,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
         WHILE ch # 0X DO Cname[j] := ch; INC(j); ch := name[i]; INC(i) END ;
         Cname[j] := 0X;
         P := Modules.ThisCommand(mod, Cname); res := Modules.res;
-        IF Modules.res = 0 THEN P END
+        IF (Modules.res = 0) & (P # NIL) THEN P END
       END
     ELSE res := 5
     END
@@ -387,13 +387,13 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
           CurTask.nextTime := t + CurTask.period; CurTask.state := active; CurTask.handle; CurTask.state := idle
         END
       END
-    UNTIL ~Backend.running()
+    UNTIL OBX.processEvents(20)
   END Loop;
 
   PROCEDURE Reset*;
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
-    // TODO SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) 
+    // SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) 
     Loop
   END Reset;
 
@@ -408,5 +408,5 @@ BEGIN User[0] := 0X;
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
-  Modules.Load("System", Mod); Mod := NIL; Loop
+  // Modules.Load("System", Mod); Mod := NIL; Loop
 END Oberon.

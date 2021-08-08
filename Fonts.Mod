@@ -21,7 +21,6 @@ MODULE Fonts; (*JG 18.11.90; PDR 8.6.12; NW 25.3.2013*)
 VAR Default*, root*: Font;
 
 PROCEDURE GetPat*(fnt: Font; ch: CHAR; VAR dx, x, y, w, h: INTEGER; VAR patadr: Display.Pattern);
-	// TODO: replace patadr by pointer to byte
   VAR pa, i: INTEGER;  dxb, xb, yb, wb, hb: BYTE;
 BEGIN pa := fnt.T[ORD(ch) MOD 80H];
   dxb := fnt.raster[pa-3]; xb := fnt.raster[pa-2]; yb := fnt.raster[pa-1]; 
@@ -31,7 +30,7 @@ BEGIN pa := fnt.T[ORD(ch) MOD 80H];
   IF yb < 128 THEN y := yb ELSE y := yb - 256 END
 END GetPat;
 
-PROCEDURE This*(name: ARRAY OF CHAR): Font;
+PROCEDURE This*(IN name: ARRAY OF CHAR): Font;
 
   TYPE RunRec = RECORD beg, end: BYTE END ;
     BoxRec = RECORD dx, x, y, w, h: BYTE END ;

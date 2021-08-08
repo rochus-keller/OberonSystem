@@ -817,19 +817,19 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   (*creation*)
 
-  PROCEDURE Menu (name, commands: ARRAY OF CHAR): Texts.Text;
+  PROCEDURE Menu (IN name, commands: ARRAY OF CHAR): Texts.Text;
     VAR T: Texts.Text;
   BEGIN NEW(T); T.notify := NotifyDisplay;  Texts.Open(T, "");
     Texts.WriteString(W, name); Texts.WriteString(W, " | ");  Texts.WriteString(W, commands);
     Texts.Append(T, W.buf); RETURN T
   END Menu;
 
-  PROCEDURE Text* (name: ARRAY OF CHAR): Texts.Text;
+  PROCEDURE Text* (IN name: ARRAY OF CHAR): Texts.Text;
     VAR T: Texts.Text;
   BEGIN NEW(T); T.notify := NotifyDisplay; Texts.Open(T, name); RETURN T
   END Text;
 
-  PROCEDURE NewMenu* (name, commands: ARRAY OF CHAR): Frame;
+  PROCEDURE NewMenu* (IN name, commands: ARRAY OF CHAR): Frame;
     VAR F: Frame; T: Texts.Text;
   BEGIN NEW(F); T := Menu(name, commands);
     Open(F, Handle, T, 0, Display.white, left DIV 4, 0, 0, 0, lsp); RETURN F

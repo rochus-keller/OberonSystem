@@ -106,7 +106,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     T.trailer := Q; Files.ReadInt(R, T.len); (*Files.Set(R, f, Files.Pos(R) + T.len)*)
   END Load;
 
-  PROCEDURE Open* (T: Text; name: ARRAY OF CHAR);
+  PROCEDURE Open* (T: Text; IN name: ARRAY OF CHAR);
     VAR f: Files.File; R: Files.Rider; Q, q: Piece;
       tag: CHAR; len: INTEGER;
   BEGIN f := Files.Old(name);
@@ -158,7 +158,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     IF T.notify # NIL THEN T.notify(T, unmark, 0, 0) END
   END Store;
 
-  PROCEDURE Close*(T: Text; name: ARRAY OF CHAR);
+  PROCEDURE Close*(T: Text; IN name: ARRAY OF CHAR);
     VAR f: Files.File; w: Files.Rider;
   BEGIN f := Files.New(name); Files.Set(w, f, 0);
     Files.Write(w, TextTag); Store(w, T); Files.Register(f)
@@ -433,7 +433,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
   BEGIN Write(W, CR)
   END WriteLn;
 
-  PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
+  PROCEDURE WriteString* (VAR W: Writer; IN s: ARRAY OF CHAR);
     VAR i: INTEGER;
   BEGIN i := 0;
     WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END

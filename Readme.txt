@@ -22,3 +22,4 @@ Modifications:
 - renamed all files from *.Mod.txt to *.Mod
 - changed windows to unix line endings in all files
 - replaced all LONGINT by INTEGER, fixes ROR(SYSTEM.VAL(INTEGER,x),y) in Display.Mod
+- removed SYSTEM calls, removed all implementations depending on VAR ARRAY OF BYTE trick

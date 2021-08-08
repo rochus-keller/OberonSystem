@@ -191,7 +191,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     IF (name[i0] = 0X) & (pat[j0] = 0X) THEN (*found*)
       Texts.WriteString(W, name);
       IF pat[j0+1] = "!" THEN (*option*)
-        // TODO Kernel.GetSector(adr, hp);
+        // Kernel.GetSector(adr, hp);
         Texts.Write(W, 9X); Texts.WriteClock(W, hp.date);
         Texts.WriteInt(W, hp.aleng*FileDir.SectorSize + hp.bleng - FileDir.HeaderSize, 8); (*length*)
         (*Texts.WriteHex(W, adr)*)
@@ -327,7 +327,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   END ShowModules;
 
 	PROCEDURE GETC( a: INTEGER; VAR v: CHAR )
-		// TODO
+	BEGIN
+		v := 0X
 	END GETC
 
   PROCEDURE ShowCommands*;
@@ -420,5 +421,5 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
 BEGIN Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
-  // TODO Kernel.Install(ADR(Trap), 20H); Kernel.Install(ADR(Abort), 0);
+  // Kernel.Install(ADR(Trap), 20H); Kernel.Install(ADR(Abort), 0);
 END System.

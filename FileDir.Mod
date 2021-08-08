@@ -1,5 +1,5 @@
 MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
-  IMPORT SYSTEM, Kernel, Backend;
+  IMPORT SYSTEM, Kernel, OBX;
 
   (*File Directory is a B-tree with its root page at DirRootAdr.
     Each entry contains a file name and the disk address of the file's head sector*)
@@ -55,32 +55,31 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
   (*Exported procedures: Search, Insert, Delete, Enumerate, Init*)
 
   PROCEDURE Search*(name: FileName; VAR A: DiskAdr);
-	// TODO
+	// NOP
   END Search;
   
   PROCEDURE Insert*(name: FileName; fad: DiskAdr);
-	  // TODO
+	  // NOP
   END Insert;
 
   PROCEDURE Delete*(name: FileName; VAR fad: DiskAdr);
-	  // TODO
+	  // NOP
   END Delete;
 
-  PROCEDURE Enumerate*(prefix: ARRAY OF CHAR; proc: EntryHandler);
-    VAR f: Backend.FileNames;
-	    i: INTEGER;
+  PROCEDURE Enumerate*(IN prefix: ARRAY OF CHAR; proc: EntryHandler);
+    VAR n,i: INTEGER;
 	    b: BOOLEAN;
   BEGIN
-	  f := Backend.listFiles();
-	  FOR i := 0 TO LEN(f)-1 DO
-		  proc(f[i],0,b);
-	  END
+		n := OBX.listFiles();
+		FOR i := 0 TO n-1 DO
+		  proc(OBX.fileName(i),0,b);
+		END
   END Enumerate;
 
 (* ----- initialization ----- *)
 
   PROCEDURE Init*;
-	 // TODO
+	 // NOP
   END Init; 
   
 END FileDir.

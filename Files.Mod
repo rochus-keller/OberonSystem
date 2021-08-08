@@ -1,5 +1,5 @@
 MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
-  IMPORT SYSTEM, Kernel, FileDir, Backend;
+  IMPORT SYSTEM, Kernel, FileDir, OBX;
 
   (*A file consists of a sequence of pages. The first page
     contains the header. Part of the header is the page table, an array
@@ -56,60 +56,58 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       0 <= apos <= aleng < PgTabSize
       (apos < aleng) & (lim = SS) OR (apos = aleng) *)
 
-  VAR root: File;  (*list of open files*)
-
-  PROCEDURE Check(s: ARRAY OF CHAR;
-        VAR name: FileDir.FileName; VAR res: INTEGER);
-    VAR i: INTEGER; ch: CHAR;
-  BEGIN ch := s[0]; i := 0;
-    IF (ch >= "A") & (ch <= "Z") OR (ch >= "a") & (ch <= "z") THEN
-      REPEAT name[i] := ch; INC(i); ch := s[i]
-      UNTIL ~((ch >= "0") & (ch <= "9") OR (ch >= "A") & (ch <= "Z")
-        OR (ch >= "a") & (ch <= "z") OR (ch = ".")) OR (i = FileDir.FnLength);
-      IF i = FileDir.FnLength THEN res := 4
-      ELSIF ch = 0X THEN res := 0;
-        WHILE i < FileDir.FnLength DO name[i] := 0X; INC(i) END
-      ELSE res := 5
-      END
-    ELSIF ch = 0X THEN name[0] := 0X; res := -1
-    ELSE res := 3
-    END
-  END Check;
 
   PROCEDURE Old*(IN name: ARRAY OF CHAR): File;
-    // TODO
-    RETURN NIL
+	  VAR f: File; fb: INTEGER
+  BEGIN
+    fb := OBX.openFile(name);
+    IF fb < 0 THEN RETURN NIL END;
+    NEW(f);
+    f.name := name;
+    f.sechint := fb;
+    RETURN f
   END Old;
 
   PROCEDURE New*(IN name: ARRAY OF CHAR): File;
-    // TODO
-    RETURN NIL
+	  VAR f: File; fb: INTEGER
+  BEGIN
+    fb := OBX.newFile();
+    NEW(f);
+    f.name := name;
+    f.sechint := fb;
+    RETURN f
   END New;
 
   PROCEDURE Register*(f: File);
-    // TODO
+	  VAR res: BOOLEAN;
+  BEGIN
+	  res := OBX.saveFile(f.name, f.sechint);
+	  Close(f)
   END Register;
 
   PROCEDURE Close*(f: File);
   BEGIN
-    // TODO
+    OBX.freeFile(f.sechint);
+    f.sechint := -1
   END Close;
 
   PROCEDURE Purge*(f: File);
-    // TODO
+  BEGIN
+    Close(f)
   END Purge;
 
   PROCEDURE Delete*(IN name: ARRAY OF CHAR; VAR res: INTEGER);
-    // TODO
+  BEGIN
+	  IF OBX.removeFile(name) THEN res := 0 ELSE res := 1 END
   END Delete;
 
   PROCEDURE Rename*(IN old, new: ARRAY OF CHAR; VAR res: INTEGER);
-    // TODO
+  BEGIN
+	  IF OBX.renameFile(old, new) THEN res := 0 ELSE res := 1 END
   END Rename;
 
   PROCEDURE Length*(f: File): INTEGER;
-    // TODO
-    RETURN 0
+    RETURN OBX.length(f.sechint)
   END Length;
 
   PROCEDURE Date*(f: File): INTEGER;
@@ -122,18 +120,13 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     VAR a, b: INTEGER;
   BEGIN  r.eof := FALSE; r.res := 0;
     IF f # NIL THEN
-      IF pos < 0 THEN a := 0; b := HS
-      ELSIF pos < f.aleng * SS + f.bleng - HS THEN
-        a := (pos + HS) DIV SS; b := (pos + HS) MOD SS;
-      ELSE a := f.aleng; b := f.bleng
-      END ;
-      r.file := f; r.apos := a; r.bpos := b; r.buf := f.firstbuf
+      r.file := f; r.apos := pos
     ELSE r.file:= NIL
     END
   END Set;
 
   PROCEDURE Pos*(VAR r: Rider): INTEGER;
-  BEGIN RETURN r.apos * SS + r.bpos - HS
+  BEGIN RETURN r.apos
   END Pos;
 
   PROCEDURE Base*(VAR r: Rider): File;
@@ -141,7 +134,21 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END Base;
 
   PROCEDURE ReadByte*(VAR r: Rider; VAR x: BYTE);
-    // TODO
+	  VAR pos: INTEGER;
+  BEGIN
+    x := 0;
+    IF r.file # NIL THEN
+      IF OBX.setPos(r.file.sechint, r.apos) THEN 
+	      r.res := 0; r.eof := FALSE;
+	      IF OBX.atEnd(r.file.sechint) THEN r.eof := TRUE; r.res := 1
+	      ELSE
+	        x := SHORT(SHORT(OBX.readByte(r.file.sechint)))
+	        pos := OBX.getPos(r.file.sechint)
+	        IF pos = r.apos THEN r.res := 1 ELSE r.apos := pos END
+	      END
+	   ELSE r.res := 1 
+	   END
+    END
   END ReadByte;
 
   PROCEDURE ReadBytes*(VAR r: Rider; VAR x: ARRAY OF BYTE; n: INTEGER);
@@ -151,9 +158,8 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END ReadBytes;
 
   PROCEDURE Read*(VAR r: Rider; VAR ch: CHAR);
-    VAR buf: Buffer;  (*same as ReadByte*)
   BEGIN
-    // TODO
+    ReadByte(r, ch)
   END Read;
 
   PROCEDURE ReadInt*(VAR R: Rider; VAR x: INTEGER);
@@ -199,17 +205,29 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END NewExt;
 
   PROCEDURE WriteByte*(VAR r: Rider; x: BYTE);
-    // TODO
+    VAR pos: INTEGER
+  BEGIN
+    IF r.file # NIL THEN
+      IF OBX.setPos(r.file.sechint, r.apos) THEN 
+	      r.res := 0; r.eof := FALSE;
+	      IF OBX.writeByte(r.file.sechint,x) THEN
+	        pos := OBX.getPos(r.file.sechint);
+	        IF pos = r.apos THEN r.res := r.res + 1 ELSE r.apos := pos END
+	      ELSE r.res := r.res + 1
+	      END
+	   ELSE r.res := r.res + 1 
+	   END
+    END
   END WriteByte;
 
-  PROCEDURE WriteBytes*(VAR r: Rider; x: ARRAY OF BYTE; n: INTEGER);
+  PROCEDURE WriteBytes*(VAR r: Rider; IN x: ARRAY OF BYTE; n: INTEGER);
     VAR i: INTEGER;
   BEGIN i := 0; (*this implementation is to be improed*)
     WHILE i < n DO WriteByte(r, x[i]); INC(i) END
   END WriteBytes;
 
   PROCEDURE Write*(VAR r: Rider; ch: CHAR);
-    // TODO
+  BEGIN WriteByte(r,ch)
   END Write;
 
   PROCEDURE WriteInt*(VAR R: Rider; x: INTEGER);
@@ -227,7 +245,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   BEGIN  WriteInt(R, ORD(x))
   END WriteReal;
 
-  PROCEDURE WriteString*(VAR R: Rider; x: ARRAY OF CHAR);
+  PROCEDURE WriteString*(VAR R: Rider; IN x: ARRAY OF CHAR);
     VAR i: INTEGER; ch: CHAR;
   BEGIN i := 0;
     REPEAT ch := x[i]; Write(R, ch); INC(i) UNTIL ch = 0X
@@ -242,7 +260,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   (*---------------------------System use---------------------------*)
 
   PROCEDURE Init*;
-  BEGIN root := NIL; Kernel.Init; FileDir.Init
+  BEGIN Kernel.Init; FileDir.Init
   END Init;
 
   PROCEDURE RestoreList*; (*after mark phase of garbage collection*)
