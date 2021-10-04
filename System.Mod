@@ -112,7 +112,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     VAR V: Viewers.Viewer; M: Viewers.ViewerMsg;
   BEGIN Viewers.Recall(V);
     IF (V#NIL) & (V.state = 0) THEN
-      Viewers.Open(V, V.X, V.Y + V.H); M.id := Viewers.restore; V.handle(V, M)
+      Viewers.Open(V, V.X, V.Y + V.H); M.id := Viewers.restore; 
+      V.handle(V, M)
     END
   END Recall;
 

@@ -22,8 +22,10 @@ VAR Default*, root*: Font;
 
 PROCEDURE GetPat*(fnt: Font; ch: CHAR; VAR dx, x, y, w, h: INTEGER; VAR patadr: Display.Pattern);
   VAR pa, i: INTEGER;  dxb, xb, yb, wb, hb: BYTE;
-BEGIN pa := fnt.T[ORD(ch) MOD 80H];
-  dxb := fnt.raster[pa-3]; xb := fnt.raster[pa-2]; yb := fnt.raster[pa-1]; 
+BEGIN 
+  pa := fnt.T[ORD(ch) MOD 80H];
+  ASSERT(pa >= 3);
+  dxb := fnt.raster[pa-3];  xb := fnt.raster[pa-2]; yb := fnt.raster[pa-1]; 
   wb := fnt.raster[pa]; hb := fnt.raster[pa+1];
   FOR i := 0 TO (wb * hb)+2-1 DO patadr[i] := fnt.raster[pa+i] END;// copy w and h and all raster bytes
   dx := dxb; x := xb; y := yb; w := wb; h := hb;
@@ -80,11 +82,14 @@ BEGIN F := root;
         F.name := name;
         F.height := height; F.minX := minX; F.maxX := maxX; F.maxY := maxY;
         IF minY >= 80H THEN F.minY := minY - 100H ELSE F.minY := minY END ;
-        a0 := 0;
+        a0 := 0; // points to first byte of F.raster
         F.raster[a0] := 0H; F.raster[a0+1] := 0H; F.raster[a0+2] := 0H; 
         F.raster[a0+3] := 0H; F.raster[a0+4] := 0H;
         (*null pattern for characters not in a run*)
-        a0 := 2; a := a0+3; j := 0; k := 0; m := 0;
+        // the null pattern sets dxb, xb, yb, wb, hb to 0 and T[] points to wb
+        INC(a0, 3); a := a0+2; // the original code is "INC(a0, 2); a := a0+3" which is wrong
+        // a now points to dxb of the next glyph
+        j := 0; k := 0; m := 0;
         WHILE k < NofRuns DO
           WHILE (m < run[k].beg) & (m < 128) DO F.T[m] := a0; INC(m) END;
           WHILE (m < run[k].end) & (m < 128) DO
