@@ -1,5 +1,5 @@
 MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
-  IMPORT SYSTEM, OBX;
+  IMPORT SYSTEM, ObsFfi;
   CONST SectorLength* = 1024;
     FSoffset = 80000H; (*256MB in 512-byte blocks*)
     mapsize = 10000H; (*1K sectors, 64MB*)
@@ -71,7 +71,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 (*-------- Miscellaneous procedures----------*)
 
   PROCEDURE Time*(): INTEGER;
-    RETURN OBX.getTime()
+    RETURN ObsFfi.getTime()
   END Time;
 
   PROCEDURE Clock*(): INTEGER;

@@ -1,10 +1,11 @@
 [General]
+BuildDir=/home/me/Entwicklung/Modules/build
 BuiltInOakwood=false
 BuiltInObSysInner=false
 MainModule=@ByteArray(Oberon)
 MainProc=@ByteArray(Loop)
 Suffixes=@Invalid()
-WorkingDir=/home/me/Entwicklung/Modules/OberonSystem/Files
+WorkingDir=%PRODIR%/Files
 
 [.]
 size=0
@@ -22,8 +23,8 @@ size=0
 13\RelPath=Texts.Mod
 14\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Viewers.Mod
 14\RelPath=Viewers.Mod
-15\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/OBX.obx
-15\RelPath=OBX.obx
+15\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/ObsFfi.obx
+15\RelPath=ObsFfi.obx
 16\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/Hennessy.Mod
 16\RelPath=Applications/Hennessy.Mod
 17\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/Hilbert.Mod

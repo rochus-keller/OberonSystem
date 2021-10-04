@@ -1,5 +1,5 @@
 MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-4*)
-  IMPORT OBX;
+  IMPORT ObsFfi;
 
   VAR kbdCode: CHAR; (*last keyboard code read*)
     Recd: BOOLEAN;
@@ -7,7 +7,7 @@ MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-
   
   PROCEDURE Peek();
   BEGIN
-    kbdCode := OBX.nextKey();
+    kbdCode := ObsFfi.nextKey();
     Recd := kbdCode # 0x
   END Peek;
   
@@ -24,9 +24,9 @@ MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-
   END Read;
 
   PROCEDURE Mouse*(VAR keys: SET; VAR x, y: INTEGER);
-    VAR state: OBX.InputState;
+    VAR state: ObsFfi.InputState;
   BEGIN 
-	  OBX.getState(state);
+	  ObsFfi.getState(state);
 	  keys := state.keys;
 	  x := state.x; 
 	  y := state.y;
