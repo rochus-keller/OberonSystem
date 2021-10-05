@@ -88,7 +88,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE Init*;
   BEGIN 
-    MemLim := 10000000; heapOrg := 0; // dummy values
+    MemLim := 10000000; heapOrg := 1; // dummy values
     stackOrg := heapOrg; stackSize := 8000H; heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     allocated := 0; clock := 0; InitSecMap
