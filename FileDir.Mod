@@ -1,5 +1,5 @@
 MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
-  IMPORT SYSTEM, Kernel, ObsFfi;
+  IMPORT SYSTEM, Kernel, ObsX;
 
   (*File Directory is a B-tree with its root page at DirRootAdr.
     Each entry contains a file name and the disk address of the file's head sector*)
@@ -70,9 +70,9 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
     VAR n,i: INTEGER;
 	    b: BOOLEAN;
   BEGIN
-		n := ObsFfi.listFiles();
+		n := ObsX.listFiles();
 		FOR i := 0 TO n-1 DO
-		  proc(ObsFfi.fileName(i),0,b);
+		  proc(ObsX.fileName(i),0,b);
 		END
   END Enumerate;
 

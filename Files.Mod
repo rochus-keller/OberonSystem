@@ -1,5 +1,5 @@
 MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
-  IMPORT SYSTEM, Kernel, FileDir, ObsFfi;
+  IMPORT SYSTEM, Kernel, FileDir, ObsX;
 
   (*A file consists of a sequence of pages. The first page
     contains the header. Part of the header is the page table, an array
@@ -60,7 +60,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   PROCEDURE Old*(IN name: ARRAY OF CHAR): File;
 	  VAR f: File; fb: INTEGER
   BEGIN
-    fb := ObsFfi.openFile(name);
+    fb := ObsX.openFile(name);
     IF fb < 0 THEN RETURN NIL END;
     NEW(f);
     f.name := name;
@@ -71,7 +71,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   PROCEDURE New*(IN name: ARRAY OF CHAR): File;
 	  VAR f: File; fb: INTEGER
   BEGIN
-    fb := ObsFfi.newFile();
+    fb := ObsX.newFile();
     NEW(f);
     f.name := name;
     f.sechint := fb;
@@ -81,13 +81,13 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   PROCEDURE Register*(f: File);
 	  VAR res: BOOLEAN;
   BEGIN
-	  res := ObsFfi.saveFile(f.name, f.sechint);
+	  res := ObsX.saveFile(f.name, f.sechint);
 	  Close(f)
   END Register;
 
   PROCEDURE Close*(f: File);
   BEGIN
-    ObsFfi.freeFile(f.sechint);
+    ObsX.freeFile(f.sechint);
     f.sechint := -1
   END Close;
 
@@ -98,16 +98,16 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
 
   PROCEDURE Delete*(IN name: ARRAY OF CHAR; VAR res: INTEGER);
   BEGIN
-	  IF ObsFfi.removeFile(name) THEN res := 0 ELSE res := 1 END
+	  IF ObsX.removeFile(name) THEN res := 0 ELSE res := 1 END
   END Delete;
 
   PROCEDURE Rename*(IN old, new: ARRAY OF CHAR; VAR res: INTEGER);
   BEGIN
-	  IF ObsFfi.renameFile(old, new) THEN res := 0 ELSE res := 1 END
+	  IF ObsX.renameFile(old, new) THEN res := 0 ELSE res := 1 END
   END Rename;
 
   PROCEDURE Length*(f: File): INTEGER;
-    RETURN ObsFfi.length(f.sechint)
+    RETURN ObsX.length(f.sechint)
   END Length;
 
   PROCEDURE Date*(f: File): INTEGER;
@@ -138,12 +138,12 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   BEGIN
     x := 0;
     IF r.file # NIL THEN
-      IF ObsFfi.setPos(r.file.sechint, r.apos) THEN 
+      IF ObsX.setPos(r.file.sechint, r.apos) THEN 
 	      r.res := 0; r.eof := FALSE;
-	      IF ObsFfi.atEnd(r.file.sechint) THEN r.eof := TRUE; r.res := 1
+	      IF ObsX.atEnd(r.file.sechint) THEN r.eof := TRUE; r.res := 1
 	      ELSE
-	        x := SHORT(SHORT(ObsFfi.readByte(r.file.sechint)))
-	        pos := ObsFfi.getPos(r.file.sechint)
+	        x := SHORT(SHORT(ObsX.readByte(r.file.sechint)))
+	        pos := ObsX.getPos(r.file.sechint)
 	        IF pos = r.apos THEN r.res := 1 ELSE r.apos := pos END
 	      END
 	   ELSE r.res := 1 
@@ -208,10 +208,10 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     VAR pos: INTEGER
   BEGIN
     IF r.file # NIL THEN
-      IF ObsFfi.setPos(r.file.sechint, r.apos) THEN 
+      IF ObsX.setPos(r.file.sechint, r.apos) THEN 
 	      r.res := 0; r.eof := FALSE;
-	      IF ObsFfi.writeByte(r.file.sechint,x) THEN
-	        pos := ObsFfi.getPos(r.file.sechint);
+	      IF ObsX.writeByte(r.file.sechint,x) THEN
+	        pos := ObsX.getPos(r.file.sechint);
 	        IF pos = r.apos THEN r.res := r.res + 1 ELSE r.apos := pos END
 	      ELSE r.res := r.res + 1
 	      END

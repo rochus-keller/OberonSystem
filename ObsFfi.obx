@@ -1,4 +1,6 @@
-definition ObsFfi [ extern 'C', prefix 'ObsFiles_' ]
+definition ObsX [ extern 'C', prefix 'ObsFiles_' ]
+
+  type Buffer = UNSAFE POINTER TO CARRAY OF INTEGER
 
   proc createRasterBuffer(length: integer): *[]integer [prefix 'ObsDisplay_']
   proc getTime(): integer [prefix 'ObsDisplay_']
@@ -24,4 +26,4 @@ definition ObsFfi [ extern 'C', prefix 'ObsFiles_' ]
   proc getState(state: *InputState) [prefix 'ObsDisplay_']
   proc nextKey(): char [prefix 'ObsDisplay_']
   
-end ObsFfi
+end ObsX
