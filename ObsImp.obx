@@ -1,0 +1,70 @@
+module ObsX 
+  import F := ObFiles, S := ObSdl
+  
+  type 
+	  Buffer* = S.Buffer
+
+  proc createRasterBuffer*(length: integer): ^[]integer 
+	  return S.createRasterBuffer(length)
+  end
+  proc processEvents*(sleep:integer): boolean 
+	  return S.processEvents(sleep)
+  end
+  type InputState* = S.InputState
+  proc getState*(var state: InputState) 
+	begin
+		S.getState(state)
+	end getState
+  proc nextKey*(): char 
+	  return S.nextKey()
+	end
+
+  proc getTime*(): integer 
+	  return F.getTime()
+	end
+    
+  proc listFiles*(): integer 
+	  return F.listFiles()
+	end
+  proc fileName*(i: integer):^[]char
+	  return F.fileName(i)
+	end
+  proc openFile*(in filename: []char): integer
+	  return F.openFile(filename)
+	end
+  proc newFile*(): integer
+	  return F.newFile()
+	end
+  proc freeFile*(buffer: integer)
+  begin
+	  F.freeFile(buffer)
+	end freeFile
+  proc saveFile*(in filename: []char; buffer: integer): boolean
+	  return F.saveFile(filename,buffer)
+	end
+  proc removeFile*(in filename: []char): boolean
+	  return F.removeFile(filename)
+	end
+  proc renameFile*(in oldName, newName: []char): boolean
+	  return F.renameFile(oldName,newName)
+	end
+  proc length*(buffer: integer): integer
+	  return F.length(buffer)
+	end
+  proc setPos*(buffer, pos: integer): boolean
+	  return F.setPos(buffer,pos)
+	end
+  proc getPos*(buffer: integer): integer
+	  return F.getPos(buffer)
+	end
+  proc atEnd*(buffer: integer): boolean
+	  return F.atEnd(buffer)
+	end
+  proc writeByte*(buffer, byte_: integer): boolean
+	  return F.writeByte(buffer,byte_)
+	end
+  proc readByte*(buffer: integer): integer
+	  return F.readByte(buffer)
+	end
+    
+end ObsX

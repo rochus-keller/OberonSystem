@@ -1,0 +1,20 @@
+definition ObFiles
+
+  proc getTime(): integer 
+    
+  proc listFiles(): integer 
+  proc fileName(i: integer):^[]char
+  proc openFile(in filename: []char): integer
+  proc newFile(): integer
+  proc freeFile(buffer: integer)
+  proc saveFile(in filename: []char; buffer: integer): boolean
+  proc removeFile(in filename: []char): boolean
+  proc renameFile(in oldName, newName: []char): boolean
+  proc length(buffer: integer): integer
+  proc setPos(buffer, pos: integer): boolean
+  proc getPos(buffer: integer): integer
+  proc atEnd(buffer: integer): boolean
+  proc writeByte(buffer, byte_: integer): boolean
+  proc readByte(buffer: integer): integer
+  
+end ObFiles
