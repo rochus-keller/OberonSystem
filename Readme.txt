@@ -24,3 +24,5 @@ Modifications:
 - replaced all LONGINT by INTEGER, fixes ROR(SYSTEM.VAL(INTEGER,x),y) in Display.Mod
 - removed SYSTEM calls, removed all implementations depending on VAR ARRAY OF BYTE trick
 - replaced backend by FFI calls to OBXLJ runtime functions (implemented in C)
+- Renamed OBX to ObsX and added second version of definition for alternative backend implementations
+- Added third version of ObsX definition and a direct SDL2 implementation of the display in Oberon+
