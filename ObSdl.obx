@@ -2,74 +2,74 @@ module ObSdl
   import SDL
   
   const
-	  WIDTH = 1024
-		HEIGHT = 768
-		BLACK = 000000h
-		WHITE = 0FFFFFFh
-		QueueLen = 100
+    WIDTH = 1024
+    HEIGHT = 768
+    BLACK = 000000h
+    WHITE = 0FFFFFFh
+    QueueLen = 100
 
   type 
-	  Buffer* = POINTER TO ARRAY OF INTEGER
+    Buffer* = POINTER TO ARRAY OF INTEGER
   
   var
-	  window : *SDL.Window
-	  texture : *SDL.Texture
-	  renderer : *SDL.Renderer
-	  buffer : Buffer
-	  sleepTime, x, y, lastUpdate : integer
-	  shift, ctrl, left, mid, right: boolean
-	  pixelBuf : array 1000*1000 of integer
-	  queue : array QueueLen of char
-	  head, tail, count: integer
+    window : *SDL.Window
+    texture : *SDL.Texture
+    renderer : *SDL.Renderer
+    buffer : Buffer
+    sleepTime, x, y, lastUpdate : integer
+    shift, ctrl, left, mid, right: boolean
+    pixelBuf : array 1000*1000 of integer
+    queue : array QueueLen of char
+    head, tail, count: integer
 
   proc createRasterBuffer*(length: integer): ^[]integer 
   begin
-	  disposeWindow()
-	  window := SDL.CreateWindow("Oberon System on CLI and SDL",
-				                  SDL.WINDOWPOS_UNDEFINED, 
-				                  SDL.WINDOWPOS_UNDEFINED, 
-				                  WIDTH,  
-				                  HEIGHT, 
-				                  SDL.WINDOW_SHOWN)
-		if window = nil then
-			SDL.Log("There was an issue creating the window. %s",SDL.GetError())
-			return nil
-		end
-		
-		renderer := SDL.CreateRenderer(window, 
-				                              -1, 
-				                              SDL.RENDERER_ACCELERATED + 
-				                              SDL.RENDERER_PRESENTVSYNC)
-	  if renderer = nil then
-			SDL.Log("There was an issue creating the renderer. %s",SDL.GetError())
-			disposeWindow()
-			return nil
-		end		   
+    disposeWindow()
+    window := SDL.CreateWindow("Oberon System on CLI and SDL",
+                          SDL.WINDOWPOS_UNDEFINED, 
+                          SDL.WINDOWPOS_UNDEFINED, 
+                          WIDTH,  
+                          HEIGHT, 
+                          SDL.WINDOW_SHOWN)
+    if window = nil then
+      SDL.Log("There was an issue creating the window. %s",SDL.GetError())
+      return nil
+    end
+    
+    renderer := SDL.CreateRenderer(window, 
+                                      -1, 
+                                      SDL.RENDERER_ACCELERATED + 
+                                      SDL.RENDERER_PRESENTVSYNC)
+    if renderer = nil then
+      SDL.Log("There was an issue creating the renderer. %s",SDL.GetError())
+      disposeWindow()
+      return nil
+    end       
 
-		texture := SDL.CreateTexture(renderer,
-				                               ord(SDL.PIXELFORMAT_ARGB8888),
-				                               ord(SDL.TEXTUREACCESS_STREAMING),
-				                               WIDTH,
-				                               HEIGHT)
-	  if texture = nil then
-			SDL.Log("There was an issue creating the texture. %s",SDL.GetError())
-			disposeWindow()
-			return nil
-		end		   
+    texture := SDL.CreateTexture(renderer,
+                                       ord(SDL.PIXELFORMAT_ARGB8888),
+                                       ord(SDL.TEXTUREACCESS_STREAMING),
+                                       WIDTH,
+                                       HEIGHT)
+    if texture = nil then
+      SDL.Log("There was an issue creating the texture. %s",SDL.GetError())
+      disposeWindow()
+      return nil
+    end       
 
-		new(buffer,length)
-		return buffer
+    new(buffer,length)
+    return buffer
   end createRasterBuffer
   
   proc disposeWindow()
   begin
-		if texture # nil then
-			SDL.DestroyTexture(texture)
-		end
-		if renderer # nil then
-			SDL.DestroyRenderer(renderer)
-		end
-		if window # nil then
+    if texture # nil then
+      SDL.DestroyTexture(texture)
+    end
+    if renderer # nil then
+      SDL.DestroyRenderer(renderer)
+    end
+    if window # nil then
       SDL.DestroyWindow(window)
     end
     window := nil
@@ -80,180 +80,180 @@ module ObSdl
   
   proc decodeUtf8char( in encoded : carray of char ): wchar
   begin
-	  // https://rosettacode.org/wiki/UTF-8_encode_and_decode#PureBasic
-		case ord(encoded[0]) of
-			| 0h..7fh: // 01111111
-				return encoded[0]
-			| 0c0h..0dfh: // 11000000..11011111
-				return wchr(lsl(bitand(ord(encoded[0]), 1fh),6)
-										+ bitand(ord(encoded[1]),3fh))
-		end
-		return 0x
-	end decodeUtf8char
-	
-	proc enqueue( c: char )
-	begin
-		if count = QueueLen then
-			println("buffer overflow")
-			return
-		end
-		inc(count)
-		queue[head] := c
-		head := (head + 1) MOD QueueLen
-	end enqueue
+    // https://rosettacode.org/wiki/UTF-8_encode_and_decode#PureBasic
+    case ord(encoded[0]) of
+      | 0h..7fh: // 01111111
+        return encoded[0]
+      | 0c0h..0dfh: // 11000000..11011111
+        return wchr(lsl(bitand(ord(encoded[0]), 1fh),6)
+                    + bitand(ord(encoded[1]),3fh))
+    end
+    return 0x
+  end decodeUtf8char
+  
+  proc enqueue( c: char )
+  begin
+    if count = QueueLen then
+      println("buffer overflow")
+      return
+    end
+    inc(count)
+    queue[head] := c
+    head := (head + 1) MOD QueueLen
+  end enqueue
 
-	proc dequeue(): char
-		var res: char
-	begin
-		if count = 0 then
-			return 0x
-		end
-		dec(count)
-		res := queue[tail]
-		tail := (tail + 1) MOD QueueLen
-		return res;
-	end dequeue
+  proc dequeue(): char
+    var res: char
+  begin
+    if count = 0 then
+      return 0x
+    end
+    dec(count)
+    res := queue[tail]
+    tail := (tail + 1) MOD QueueLen
+    return res;
+  end dequeue
 
 proc processEvents*(sleep:integer): boolean 
-	  var e: SDL.Event
-		  down: boolean
-		  str : carray 32 of wchar
-		  time : integer
-		  r: SDL.Rect
+    var e: SDL.Event
+      down: boolean
+      str : carray 32 of wchar
+      time : integer
+      r: SDL.Rect
   begin
-	  sleepTime := sleep
-	  down := false
-	  if SDL.WaitEventTimeout(e,sleep) = 1 then
-		  case e.type_ of
-			  | SDL.QUIT:
-				  return true
-			  | SDL.MOUSEMOTION:
-				  x := e.motion.x
-				  y := e.motion.y
-				  if ( (x >= 0) & (x < WIDTH) ) or ( (y >= 0) & (y < HEIGHT) ) then
-					  SDL.ShowCursor( SDL.DISABLE )
-				  else
-					  SDL.ShowCursor( SDL.ENABLE )
-				  end
-				  x := max(x, 0)
-				  x := min(x, WIDTH-1)
-				  y := max(y, 0)
-				  y := min(y, HEIGHT-1)
-				| SDL.MOUSEBUTTONDOWN,
-					SDL.MOUSEBUTTONUP:
-				    down := (e.button.state = SDL.PRESSED)
-				    case e.button.button of
-					    | SDL.BUTTON_LEFT:
-						    if ctrl & shift then
-							    right := down
-							  elsif ctrl then
-								  mid := down
-								else
-									left := down
-								end
-							| SDL.BUTTON_MIDDLE:
-								mid := down
-							| SDL.BUTTON_RIGHT:
-								if ctrl then
-									mid := down
-								else
-									right := down
-								end
-					    if ~down then
-						    left := false
-						    right := false
-						    mid := false
-						  end
-					  end
-				| SDL.TEXTINPUT:
-					enqueue(short(decodeUtf8char(e.text.text)))
-				| SDL.KEYDOWN, SDL.KEYUP:
-				  down := (e.key.state = SDL.PRESSED)
-				  case e.key.keysym.sym of
-					  | SDL.SDLK_LCTRL:
-						  ctrl := down
-						| SDL.SDLK_LSHIFT:
-							shift := down
-					  | SDL.SDLK_q:
-					    if down & ( bitand(e.key.keysym.mod_,SDL.KMOD_LCTRL)#0 ) then
-						    return true
-						  end
-						| SDL.SDLK_RETURN:
-						  if down then enqueue(0dx) end // \r
-						| SDL.SDLK_BACKSPACE:
-						  if down then enqueue(08x) end // \b
-						| SDL.SDLK_TAB:
-						  if down then enqueue(09x) end // \t
-						| SDL.SDLK_ESCAPE:
-						  if down then enqueue(1bx) end 
-					end
-					//SDL.Log("ctrl %d shift %d sym %d %d"+0dx, 
-					//	ord(ctrl), ord(shift), e.key.keysym.sym, bitand(e.key.keysym.sym,0ffh) )
-		  end
-	  end
-	  time := SDL.GetTicks()
-	  if ( time - lastUpdate ) > 30 then // 20 good for runtime, too slow for debugger
-	    lastUpdate := time
-	    updateTexture()
-	    SDL.RenderClear(renderer)
-	    r.x := 0
-	    r.y := 0
-	    r.w := WIDTH
-	    r.h := HEIGHT
-	    SDL.RenderCopy(renderer, texture, r, r)
-	    SDL.RenderPresent(renderer)
-	  end
-	  return false
+    sleepTime := sleep
+    down := false
+    if SDL.WaitEventTimeout(e,sleep) = 1 then
+      case e.type_ of
+        | SDL.QUIT:
+          return true
+        | SDL.MOUSEMOTION:
+          x := e.motion.x
+          y := e.motion.y
+          if ( (x >= 0) & (x < WIDTH) ) or ( (y >= 0) & (y < HEIGHT) ) then
+            SDL.ShowCursor( SDL.DISABLE )
+          else
+            SDL.ShowCursor( SDL.ENABLE )
+          end
+          x := max(x, 0)
+          x := min(x, WIDTH-1)
+          y := max(y, 0)
+          y := min(y, HEIGHT-1)
+        | SDL.MOUSEBUTTONDOWN,
+          SDL.MOUSEBUTTONUP:
+            down := (e.button.state = SDL.PRESSED)
+            case e.button.button of
+              | SDL.BUTTON_LEFT:
+                if ctrl & shift then
+                  right := down
+                elsif ctrl then
+                  mid := down
+                else
+                  left := down
+                end
+              | SDL.BUTTON_MIDDLE:
+                mid := down
+              | SDL.BUTTON_RIGHT:
+                if ctrl then
+                  mid := down
+                else
+                  right := down
+                end
+              if ~down then
+                left := false
+                right := false
+                mid := false
+              end
+            end
+        | SDL.TEXTINPUT:
+          enqueue(short(decodeUtf8char(e.text.text)))
+        | SDL.KEYDOWN, SDL.KEYUP:
+          down := (e.key.state = SDL.PRESSED)
+          case e.key.keysym.sym of
+            | SDL.SDLK_LCTRL:
+              ctrl := down
+            | SDL.SDLK_LSHIFT:
+              shift := down
+            | SDL.SDLK_q:
+              if down & ( bitand(e.key.keysym.mod_,SDL.KMOD_LCTRL)#0 ) then
+                return true
+              end
+            | SDL.SDLK_RETURN:
+              if down then enqueue(0dx) end // \r
+            | SDL.SDLK_BACKSPACE:
+              if down then enqueue(08x) end // \b
+            | SDL.SDLK_TAB:
+              if down then enqueue(09x) end // \t
+            | SDL.SDLK_ESCAPE:
+              if down then enqueue(1bx) end 
+          end
+          //SDL.Log("ctrl %d shift %d sym %d %d"+0dx, 
+          //  ord(ctrl), ord(shift), e.key.keysym.sym, bitand(e.key.keysym.sym,0ffh) )
+      end
+    end
+    time := SDL.GetTicks()
+    if ( time - lastUpdate ) > 30 then // 20 good for runtime, too slow for debugger
+      lastUpdate := time
+      updateTexture()
+      SDL.RenderClear(renderer)
+      r.x := 0
+      r.y := 0
+      r.w := WIDTH
+      r.h := HEIGHT
+      SDL.RenderCopy(renderer, texture, r, r)
+      SDL.RenderPresent(renderer)
+    end
+    return false
   end processEvents
   
   proc updateTexture()
-	  var r: SDL.Rect
-		  out_idx, line, col, b, pixels, line_start : integer
-	begin
-		r.x := 0
-		r.y := 0
-		r.w := WIDTH
-		r.h := HEIGHT
-		out_idx := 0
-		for line := HEIGHT-1 to 0 by -1 do 
-			line_start := line * (WIDTH div 32)
-			for col := 0 to WIDTH div 32 - 1 do
-				pixels := buffer[line_start + col]
-				for b := 0 to 31 do
-				  if bitand(pixels, 1) # 0 then
-						pixelBuf[out_idx] := WHITE;
-					else
-						pixelBuf[out_idx] := BLACK;
-					end
-					pixels := ror(pixels, 1)
-					inc(out_idx)
-				end
-			end
-		end
-		SDL.UpdateTexture(texture, r, pixelBuf, r.w * 4)
+    var r: SDL.Rect
+      out_idx, line, col, b, pixels, line_start : integer
+  begin
+    r.x := 0
+    r.y := 0
+    r.w := WIDTH
+    r.h := HEIGHT
+    out_idx := 0
+    for line := HEIGHT-1 to 0 by -1 do 
+      line_start := line * (WIDTH div 32)
+      for col := 0 to WIDTH div 32 - 1 do
+        pixels := buffer[line_start + col]
+        for b := 0 to 31 do
+          if bitand(pixels, 1) # 0 then
+            pixelBuf[out_idx] := WHITE;
+          else
+            pixelBuf[out_idx] := BLACK;
+          end
+          pixels := ror(pixels, 1)
+          inc(out_idx)
+        end
+      end
+    end
+    SDL.UpdateTexture(texture, r, pixelBuf, r.w * 4)
   end updateTexture
   
 
   type InputState* = record keys*: set; x*, y*: integer end
   proc getState*(var state: InputState) 
   begin
-  	processEvents(sleepTime)
-		state.x := x
-		state.y := HEIGHT - y - 1
-		state.keys := 0
-		if left then state.keys := state.keys + {2} end
-		if mid then state.keys := state.keys + {1} end
-		if right then state.keys := state.keys + {0} end
+    processEvents(sleepTime)
+    state.x := x
+    state.y := HEIGHT - y - 1
+    state.keys := 0
+    if left then state.keys := state.keys + {2} end
+    if mid then state.keys := state.keys + {1} end
+    if right then state.keys := state.keys + {0} end
   end getState
   
   proc nextKey*(): char 
-	  return dequeue()
+    return dequeue()
   end nextKey
   
 begin
   x := 0; y := 0
-	lastUpdate := 0
-	sleepTime := 0
-	left := false; mid := false; right := false; ctrl := false; shift := false
-	head := 0; tail := 0; count := 0
+  lastUpdate := 0
+  sleepTime := 0
+  left := false; mid := false; right := false; ctrl := false; shift := false
+  head := 0; tail := 0; count := 0
 end ObSdl
