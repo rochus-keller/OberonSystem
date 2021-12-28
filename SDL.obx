@@ -1143,7 +1143,6 @@ definition SDL [extern 'C', dll 'SDL2', prefix 'SDL_']
     proc LogSetOutputFunction(callback: LogOutputFunction; userdata: *void)
 
     // from SDL_main.h
-    proc main(argc: integer; _2: *[]*[]char): integer
     proc SetMainReady
 
     // from SDL_messagebox.h
