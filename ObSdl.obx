@@ -78,7 +78,7 @@ module ObSdl
     buffer := nil
   end disposeWindow
   
-  proc decodeUtf8char( in encoded : carray of char ): wchar
+  proc decodeUtf8char( encoded : *[]char ): wchar
   begin
     // https://rosettacode.org/wiki/UTF-8_encode_and_decode#PureBasic
     case ord(encoded[0]) of

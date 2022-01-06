@@ -86,13 +86,13 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
         END
       END ;
       GETS(a0, pix);
-      IF mode = invert THEN PUTS(a0, VAL(SET, LSL(pwd, x MOD 32)) / pix)
-      ELSE PUTS(a0, VAL(SET, LSL(pwd, x MOD 32)) + pix)
+      IF mode = invert THEN PUTS(a0, BITS(LSL(pwd, x MOD 32)) / pix)
+      ELSE PUTS(a0, BITS(LSL(pwd, x MOD 32)) + pix)
       END ;
       IF (x MOD 32) + w > 32 THEN (*spill over*)
         GETS(a0+4, pix);
-        IF mode = invert THEN PUTS(a0+4, VAL(SET, ASR(pwd, -(x MOD 32))) / pix)
-        ELSE PUTS(a0+4, VAL(SET, ASR(pwd, -(x MOD 32))) + pix)
+        IF mode = invert THEN PUTS(a0+4, BITS(ASR(pwd, -(x MOD 32))) / pix)
+        ELSE PUTS(a0+4, BITS(ASR(pwd, -(x MOD 32))) + pix)
         END
       END
     END
@@ -117,35 +117,35 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
     WHILE sa0 # end DO
       IF n >= 0 THEN (*shift right*) m1 := {n .. 31};
         IF v1 + w >= 32 THEN
-          GETS(sa0+len, src); src := ROR(VAL(INTEGER,src), n);
+          GETS(sa0+len, src); src := ROR(ORD(src), n);
           GETS(sa0+len+d, dst);
           PUTS(sa0+len+d, (dst * m2) + (src - m2));
           spill := src - m1;
           FOR sa1 := sa0 + len-4 TO sa0+4  BY -4 DO
-            GETS(sa1, src); src := ROR(VAL(INTEGER,src), n);
+            GETS(sa1, src); src := ROR(ORD(src), n);
             PUTS(sa1+d, spill + (src * m1));
             spill := src - m1
           END ;
-          GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+          GETS(sa0, src); src := ROR(ORD(src), n);
           GETS(sa0+d, dst);
           PUTS(sa0+d, (src * m0) + (dst - m0))
-        ELSE GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+        ELSE GETS(sa0, src); src := ROR(ORD(src), n);
           GETS(sa0+d, dst);
           PUTS(sa0+d, (src * m3) + (dst - m3))
         END
       ELSE (*shift left*) m1 := {-n .. 31};
-        GETS(sa0, src); src := ROR(VAL(INTEGER,src), n);
+        GETS(sa0, src); src := ROR(ORD(src), n);
         GETS(sa0+d, dst);
         IF v1 + w < 32 THEN
           PUTS(sa0+d, (dst - m3) + (src * m3))
         ELSE PUTS(sa0+d, (dst - m0) + (src * m0));
           spill := src - m1;
           FOR sa1 := sa0+4 TO sa0 + len-4 BY 4 DO
-            GETS(sa1, src); src := ROR(VAL(INTEGER,src), n);
+            GETS(sa1, src); src := ROR(ORD(src), n);
             PUTS(sa1+d, spill + (src * m1));
             spill := src - m1
           END ;
-          GETS(sa0+len, src); src := ROR(VAL(INTEGER,src), n);
+          GETS(sa0+len, src); src := ROR(ORD(src), n);
           GETS(sa0+len+d, dst);
           PUTS(sa0+len+d, (src - m2) + (dst * m2))
         END
