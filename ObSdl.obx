@@ -23,7 +23,10 @@ module ObSdl
     head, tail, count: integer
 
   proc createRasterBuffer*(length: integer): ^[]integer 
+		var v: SDL.version
   begin
+		SDL.GetVersion(v)
+		SDL.Log("Loaded SDL version %d.%d.%d"+0ax, v.major, v.minor, v.patch )
     disposeWindow()
     window := SDL.CreateWindow("Oberon System on CLI and SDL",
                           SDL.WINDOWPOS_UNDEFINED, 
