@@ -4,6 +4,7 @@ BuiltInOakwood=false
 BuiltInObSysInner=false
 MainModule=@ByteArray(Oberon)
 MainProc=@ByteArray(Loop)
+Options=@ByteArray()
 Suffixes=@Invalid()
 WorkingDir=%PRODIR%/Files
 
@@ -41,6 +42,16 @@ size=0
 21\RelPath=ObSdl.obx
 22\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/ObFiles.obx
 22\RelPath=ObFiles.obx
+23\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/ORB.Mod
+23\RelPath=Applications/ORB.Mod
+24\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/ORG.Mod
+24\RelPath=Applications/ORG.Mod
+25\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/ORP.Mod
+25\RelPath=Applications/ORP.Mod
+26\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/ORS.Mod
+26\RelPath=Applications/ORS.Mod
+27\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Applications/ORTool.Mod
+27\RelPath=Applications/ORTool.Mod
 3\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/FileDir.Mod
 3\RelPath=FileDir.Mod
 4\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Files.Mod
@@ -55,7 +66,7 @@ size=0
 8\RelPath=MenuViewers.Mod
 9\AbsPath=/home/me/Entwicklung/Modules/OberonSystem/Modules.Mod
 9\RelPath=Modules.Mod
-size=22
+size=27
 
 [Packages]
 1\Name=@ByteArray()

@@ -77,7 +77,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
       w, h, pbt: BYTE; pix: SET;
   BEGIN w := patadr[0]; h := patadr[1]; i := 2;
     a := base + (x DIV 32)*4 + y*128; 
-    FOR a0 := a TO a + (h-1)*128 BY 128 DO
+    FOR a0 := a TO a + (h-1)*128I BY 128 DO
       (*build pattern line; w < 32*)
       pbt := patadr[i]; INC(i); pwd := pbt;
       IF w > 8 THEN pbt := patadr[i]; INC(i); pwd := pbt*100H + pwd;

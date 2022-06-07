@@ -8,3 +8,13 @@ http://oberon.wdfiles.com/local--files/oberon-linux-revival-olr/olr.mature.17021
 Downloaded 6.10.2019
 modified for Oberon-07 compatibility
 
+
+
+Source of OR*.Mod:
+Original Oberon Compiler for RISC-5 by N. Wirth
+downloaded from http://www.projectoberon.net/zip/or.zip
+File Date 2018-11-28
+replaced all LONGINT by INTEGER
+replaced all "SYSTEM.VAL(T," by the dedicated predeclared function
+
+

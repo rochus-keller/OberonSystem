@@ -352,7 +352,7 @@ END Towers;
 			c: ARRAY 15 OF BOOLEAN;
 			x: ARRAY 9 OF INTEGER;
 	BEGIN
-		i := 0 - 7;
+		i := -7;
 		WHILE i <= 16 DO
 			IF (i >= 1) & (i <= 8) THEN a[i] := TRUE END ;
 			IF i >= 2 THEN b[i] := TRUE END ;

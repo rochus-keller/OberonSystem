@@ -69,7 +69,7 @@ BEGIN F := root;
         WHILE k # NofRuns DO
           RdInt16(R, beg);
           run[k].beg := beg; RdInt16(R, end);
-          run[k].end := end; NofBoxes := NofBoxes + end - beg; INC(k)
+          run[k].end := end; NofBoxes := SHORT(NofBoxes + LONG(end) - beg); INC(k)
         END;
         NofBytes := 5; j := 0;
         WHILE j # NofBoxes DO

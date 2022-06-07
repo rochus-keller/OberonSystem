@@ -12,6 +12,8 @@ System.Directory ^
   *.Mod  *.Bak  *.Tool  *.Text  *.Scn.Fnt  *.smb  *.rsc
   Hans.*
   
+ORP.Compile @  ORP.Compile @/s  ORP.Compile name~
+
 System.Free ~
 System.CopyFiles ~
 System.RenameFiles ~
