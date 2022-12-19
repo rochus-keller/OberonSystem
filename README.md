@@ -4,16 +4,16 @@ This project is a spin-off from https://github.com/rochus-keller/Oberon. It make
 
 
 Screenshot of the running Oberon System:
-![Oberon System Screenshot](http://software.rochus-keller.info/screenshot_oberon_system_on_luajit.png)
+![Oberon System Screenshot](http://software.rochus-keller.ch/screenshot_oberon_system_on_luajit.png)
 
 
 Screenshot of the IDE in the source level debugger at a break:
-![Oberon IDE Screenshot](http://software.rochus-keller.info/screenshot_oberon_system_in_debugger.png)
+![Oberon IDE Screenshot](http://software.rochus-keller.ch/screenshot_oberon_system_in_debugger.png)
 
-Here is a binary version of the Oberon IDE for Windows: http://software.rochus-keller.info/OberonIDE_win32.zip.
+Here is a binary version of the Oberon IDE for Windows: http://software.rochus-keller.ch/OberonIDE_win32.zip.
 Just unpack the ZIP somewhere on your drive and double-click OberonIDE.exe; Qt libraries are included, as well as this version of the Oberon System. To run it, open the project in the IDE using CTRL+O and then press CTRL+R, or right-click to open context menus and select the commands from there.
 
-The implementation is platform independent. It can be built on all platforms where LuaJIT and Qt 5 are available (e.g. Linux, macOS, FreeBSD, Raspberry PI, etc.). Here is a binary for macOS: http://software.rochus-keller.info/OberonIDE_macOS_x64.dmg.
+The implementation is platform independent. It can be built on all platforms where LuaJIT and Qt 5 are available (e.g. Linux, macOS, FreeBSD, Raspberry PI, etc.). Here is a binary for macOS: http://software.rochus-keller.ch/OberonIDE_macOS_x64.dmg.
 
 For more information about the Oberon IDE and LuaJIT bytecode compiler see https://github.com/rochus-keller/Oberon/blob/master/README.md
 
