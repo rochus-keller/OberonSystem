@@ -26,3 +26,4 @@ Modifications:
 - replaced backend by FFI calls to OBXLJ runtime functions (implemented in C)
 - Renamed OBX to ObsX and added second version of definition for alternative backend implementations
 - Added third version of ObsX definition and a direct SDL2 implementation of the display in Oberon+
+- Added yet another version of ObsX and an implementation based on the new PAL

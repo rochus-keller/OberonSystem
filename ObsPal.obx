@@ -1,0 +1,88 @@
+module ObsX 
+  import F := ObxPAL
+  
+  const
+    width = 1024
+    height = 768
+  type 
+	  Buffer* = ^[]integer
+	  
+	var
+  	buffer: Buffer
+
+  proc createRasterBuffer*(length: integer): Buffer
+  begin
+    new(buffer, length)
+    F.open_screen(width,height,F.Mono)
+	  return buffer
+  end createRasterBuffer
+  
+  proc processEvents*(sleep:integer): boolean 
+  begin
+	  return F.process_event(sleep,buffer^) # 0
+  end processEvents
+  
+  type InputState* = record keys*: set; x*, y*: integer end
+  
+  proc getState*(var state: InputState) 
+  var x,y,k: carray 1 of integer
+	begin
+		F.mouse_state(x,y,k)
+		state.x := x[0]
+		state.y := y[0]
+		state.keys := BITS(k[0])
+	end getState
+	
+  proc nextKey*(): char 
+	  return CHR(F.next_key())
+	end
+
+  proc getTime*(): integer 
+	  return F.time()
+	end
+    
+  proc listFiles*(): integer 
+	  return F.file_list()
+	end
+  proc fileName*(i: integer):*[]char
+	  return F.file_name(i)
+	end
+  proc openFile*(in filename: []char): integer
+	  return F.file_open(filename)
+	end
+  proc newFile*(): integer
+	  return F.file_new()
+	end
+  proc freeFile*(buffer: integer)
+  begin
+	  F.file_free(buffer)
+	end freeFile
+  proc saveFile*(in filename: []char; buffer: integer): boolean
+	  return F.file_save(filename,buffer) # 0
+	end
+  proc removeFile*(in filename: []char): boolean
+	  return F.file_remove(filename) # 0
+	end
+  proc renameFile*(in oldName, newName: []char): boolean
+	  return F.file_rename(oldName,newName) # 0
+	end
+  proc length*(buffer: integer): integer
+	  return F.file_length(buffer)
+	end
+  proc setPos*(buffer, pos: integer): boolean
+	  return F.file_seek(buffer,pos) # 0
+	end
+  proc getPos*(buffer: integer): integer
+	  return F.file_pos(buffer)
+	end
+  proc atEnd*(buffer: integer): boolean
+	  return F.file_eof(buffer) # 0
+	end
+  proc writeByte*(buffer, byte_: integer): boolean
+	  return F.file_write_byte(buffer,byte_) # 0
+	end
+  proc readByte*(buffer: integer): integer
+	  return F.file_read_byte(buffer)
+	end
+    
+end ObsX

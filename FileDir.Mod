@@ -69,10 +69,12 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
   PROCEDURE Enumerate*(IN prefix: ARRAY OF CHAR; proc: EntryHandler);
     VAR n,i: INTEGER;
 	    b: BOOLEAN;
+	    str: ARRAY 64 OF CHAR;
   BEGIN
 		n := ObsX.listFiles();
 		FOR i := 0 TO n-1 DO
-		  proc(ObsX.fileName(i),0,b);
+		  str := ObsX.fileName(i);
+		  proc(str,0,b);
 		END
   END Enumerate;
 
