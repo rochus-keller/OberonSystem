@@ -158,8 +158,9 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END ReadBytes;
 
   PROCEDURE Read*(VAR r: Rider; VAR ch: CHAR);
+  VAR b: BYTE;
   BEGIN
-    ReadByte(r, ch)
+    ReadByte(r, b); ch := CHR(b)
   END Read;
 
   PROCEDURE ReadInt*(VAR R: Rider; VAR x: INTEGER);
@@ -227,7 +228,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END WriteBytes;
 
   PROCEDURE Write*(VAR r: Rider; ch: CHAR);
-  BEGIN WriteByte(r,ch)
+  BEGIN WriteByte(r,ORD(ch))
   END Write;
 
   PROCEDURE WriteInt*(VAR R: Rider; x: INTEGER);
