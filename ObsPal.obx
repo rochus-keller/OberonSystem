@@ -13,13 +13,13 @@ module ObsX
   proc createRasterBuffer*(length: integer): Buffer
   begin
     new(buffer, length)
-    F.open_screen(width,height,F.Mono)
+    F.open_screen(width,height,F.Mono, "Oberon System 5", buffer^)
 	  return buffer
   end createRasterBuffer
   
   proc processEvents*(sleep:integer): boolean 
   begin
-	  return F.process_event(sleep,buffer^) # 0
+	  return F.process_events(0) # 0
   end processEvents
   
   type InputState* = record keys*: set; x*, y*: integer end

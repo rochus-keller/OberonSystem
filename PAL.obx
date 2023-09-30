@@ -8,10 +8,12 @@ definition ObxPAL [extern 'C', dll 'Pal', prefix 'PAL_']
     
   proc time(): int32 // milliseconds since start
   proc dispose()
+  proc printChar(ch: char)
   
   proc file_list(): int32 
   proc file_name(i: int32): *[]char
   proc file_open(filename: *[]char): int32
+  proc file_key(filename: *[]char): int32
   proc file_new(): int32 
   proc file_free(buffer: int32)
   proc file_save(filename: *[]char; buffer: int32): int32
@@ -24,9 +26,21 @@ definition ObxPAL [extern 'C', dll 'Pal', prefix 'PAL_']
   proc file_write_byte(buffer: int32; byte_: int32): int32
   proc file_read_byte(buffer: int32): int32
   
-  proc open_screen(width, height, format: int32): int32
-  proc process_event(sleep: int32; buffer: *void): int32
+  proc open_screen(width, height, format: int32; title: *[]char; buffer: *void): int32 
+  // NOTE: buffer cannot be an ARRAY OF CHAR because this one (and only this one) is marshalled on Mono
+  proc process_events(sleep: int32): int32
   proc next_key(): int32
+  proc pending_keys(): int32
   proc mouse_state(x, y, keys: *[1]int32): int32
-    
+  proc modifier_state(mods: *[1]int32): int32
+  proc update( x, y, w, h: int32):int32
+  
+  proc sin(x: longreal): longreal
+  proc cos(x: longreal): longreal
+  proc arctan(x: longreal): longreal
+  proc sqrt(x: longreal): longreal
+  proc ln(x: longreal): longreal
+  proc exp(x: longreal): longreal
+  proc pow(x, e: longreal): longreal
+ 
 end ObxPAL
