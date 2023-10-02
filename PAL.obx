@@ -11,7 +11,7 @@ definition ObxPAL [extern 'C', dll 'Pal', prefix 'PAL_']
   proc printChar(ch: char)
   
   proc file_list(): int32 
-  proc file_name(i: int32): *[]char
+  proc file_list_item(i: int32): *[]char
   proc file_open(filename: *[]char): int32
   proc file_key(filename: *[]char): int32
   proc file_new(): int32 

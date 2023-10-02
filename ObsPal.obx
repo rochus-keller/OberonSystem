@@ -45,7 +45,7 @@ module ObsX
 	  return F.file_list()
 	end
   proc fileName*(i: integer):*[]char
-	  return F.file_name(i)
+	  return F.file_list_item(i)
 	end
   proc openFile*(in filename: []char): integer
 	  return F.file_open(filename)
