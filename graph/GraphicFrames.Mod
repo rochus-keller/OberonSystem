@@ -1,5 +1,5 @@
 MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
-  IMPORT SYSTEM, Display, Viewers, Input, Fonts, Texts, Graphics, Oberon, MenuViewers;
+  IMPORT SYSTEM, SYS, Display, Viewers, Input, Fonts, Texts, Graphics, Oberon, MenuViewers;
 
   CONST (*update message ids*)
     drawobj = 1; drawobjs = 2; drawobjd = 3;
@@ -12,26 +12,26 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
     Location* = POINTER TO LocDesc;
 
     LocDesc* = RECORD
-        x*, y*: INTEGER;
+        x*, y*: LONGINT;
         next*: Location
       END ;
 
     FrameDesc* = RECORD (Display.FrameDesc)
         graph*: Graphics.Graph;
-        Xg*, Yg*: INTEGER;  (*pos rel to graph origin*)
-        X1*, Y1*: INTEGER;  (*right and upper margins*)
-        x*, y*, col*: INTEGER;  (*x = X + Xg, y = Y + Yg*)
+        Xg*, Yg*: LONGINT;  (*pos rel to graph origin*)
+        X1*, Y1*: LONGINT;  (*right and upper margins*)
+        x*, y*, col*: LONGINT;  (*x = X + Xg, y = Y + Yg*)
         marked*, ticked*: BOOLEAN;
         mark*: LocDesc
       END ;
 
     DrawMsg* = RECORD (Graphics.Msg)
         f*: Frame;
-        x*, y*, col*, mode*: INTEGER
+        x*, y*, col*, mode*: LONGINT
       END ;
 
     UpdateMsg = RECORD (Display.FrameMsg)
-        id: INTEGER;
+        id: LONGINT;
         graph: Graphics.Graph;
         obj: Graphics.Object
       END ;
@@ -39,7 +39,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
     ChangedMsg = RECORD (Display.FrameMsg)
         f: Frame;
         graph: Graphics.Graph;
-        mode: INTEGER
+        mode: LONGINT
       END ;
 
     SelQuery = RECORD (Display.FrameMsg)
@@ -51,27 +51,29 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
       END ;
 
     PosQuery = RECORD (Display.FrameMsg)
-        f: Frame; x, y: INTEGER
+        f: Frame; x, y: LONGINT
       END ;
 
     DispMsg = RECORD (Display.FrameMsg)
-        x1, y1, w: INTEGER;
-        pat: INTEGER;
+        x1, y1, w: LONGINT;
+        pat: LONGINT;
         graph: Graphics.Graph
       END ;
 
   VAR Crosshair*: Oberon.Marker;
-    tack*, dotted*, dotted1*: INTEGER;  (*patterns*)
+    tack*, dotted*, dotted1*: LONGINT;  (*patterns*)
+    tackP: ARRAY 11 OF SYSTEM.BYTE;
+    dottedP, dotted1P: ARRAY 22 OF SYSTEM.BYTE;
     newcap: Graphics.Caption;
     TBuf: Texts.Buffer;
-    DW, DH, CL: INTEGER;
+    DW, DH, CL: LONGINT;
     W: Texts.Writer;
 
   (*Exported procedures:
     Restore, Focus, Selected, This, Draw, DrawNorm, Erase,
     DrawObj, EraseObj, Change, Defocus, Deselect, Macro, Open*)
 
-  PROCEDURE SetChangeMark(F: Frame; col: INTEGER); (*set mark in corner of frame*)
+  PROCEDURE SetChangeMark(F: Frame; col: LONGINT); (*set mark in corner of frame*)
   BEGIN
     IF F.H > 16 THEN
       IF col = 0 THEN Display.ReplConst(Display.black, F.X+F.W-12, F.Y+F.H-12, 8, 8, Display.replace)
@@ -81,7 +83,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
   END SetChangeMark;
 
   PROCEDURE Restore*(F: Frame);
-    VAR x, x0, y: INTEGER; M: DrawMsg;
+    VAR x, x0, y: LONGINT; M: DrawMsg;
   BEGIN F.X1 := F.X + F.W; F.Y1 := F.Y + F.H;
     F.x := (F.X + F.Xg) DIV 16 * 16; F.y := (F.Y + F.Yg) DIV 16 * 16; F.marked := FALSE; F.mark.next := NIL;
     Oberon.RemoveMarks(F.X, F.Y, F.W, F.H); Display.ReplConst(F.col, F.X, F.Y, F.W, F.H, 0);
@@ -97,7 +99,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
     IF F.graph.changed THEN SetChangeMark(F, 1) END
   END Restore;
 
-  PROCEDURE FlipCross(X, Y: INTEGER);
+  PROCEDURE FlipCross(X, Y: LONGINT);
   BEGIN
     IF X < CL THEN
       IF X < 7 THEN X := 7 ELSIF X > DW - 7 THEN X := DW - 7 END
@@ -118,12 +120,12 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
   BEGIN SQ.f := NIL; SQ.time := 0; Viewers.Broadcast(SQ); RETURN SQ.f
   END Selected;
 
-  PROCEDURE This*(x, y: INTEGER): Frame;
+  PROCEDURE This*(x, y: LONGINT): Frame;
     VAR PQ: PosQuery;
   BEGIN PQ.f := NIL; PQ.x := x; PQ.y := y; Viewers.Broadcast(PQ); RETURN PQ.f
   END This;
 
-  PROCEDURE Mark(F: Frame; mode: INTEGER);
+  PROCEDURE Mark(F: Frame; mode: LONGINT);
     VAR CM: ChangedMsg;
   BEGIN CM.f := F; CM.graph := F.graph; CM.mode := mode; Viewers.Broadcast(CM)
   END Mark;
@@ -158,7 +160,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
     IF F # NIL THEN Erase(F); Graphics.Change(F.graph, msg); Draw(F) END
   END Change;
 
-  PROCEDURE FlipMark(x, y: INTEGER);
+  PROCEDURE FlipMark(x, y: LONGINT);
   BEGIN
     Display.ReplConst(Display.white, x-7, y, 15, 1, 2);
     Display.ReplConst(Display.white, x, y-7, 1, 15, 2)
@@ -184,7 +186,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
   END Deselect;
 
   PROCEDURE Macro*(Lname, Mname: ARRAY OF CHAR);
-    VAR x, y: INTEGER;
+    VAR x, y: LONGINT;
       F: Frame;
       mac: Graphics.Macro; mh: Graphics.MacHead;
       L: Graphics.Library;
@@ -197,7 +199,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
         IF mh # NIL THEN
           Deselect(F); Defocus(F);
           NEW(mac); mac.x := x; mac.y := y; mac.w := mh.w; mac.h := mh.h;
-          mac.mac := mh; mac.do := Graphics.MacMethod; mac.col := Oberon.CurCol;
+          mac.mac := mh; mac.do := Graphics.MacMethod; mac.col := CHR(Oberon.CurCol);
           Graphics.Add(F.graph, mac); DrawObj(F, mac); Mark(F, 1)
         END
       ELSE Texts.WriteString(W, Lname); Texts.WriteString(W, " not available");
@@ -207,11 +209,11 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
   END Macro;
 
   PROCEDURE CaptionCopy(F: Frame;
-      x1, y1: INTEGER; T: Texts.Text; beg, end: LONGINT): Graphics.Caption;
+      x1, y1: LONGINT; T: Texts.Text; beg, end: LONGINT): Graphics.Caption;
     VAR ch: CHAR;
-      dx, w, x2, y2, w1, h1: INTEGER;
+      dx, w, x2, y2, w1, h1: LONGINT;
       cap: Graphics.Caption;
-      pat: INTEGER;
+      pat: LONGINT;
       R: Texts.Reader;
   BEGIN Texts.Write(W, 0DX);
     NEW(cap); cap.len := end - beg;
@@ -222,21 +224,21 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
       Fonts.GetPat(R.fnt, ch, dx, x2, y2, w1, h1, pat);
       INC(w, dx); INC(beg); Texts.Write(W, ch); Texts.Read(R, ch)
     END ;
-    cap.w := w; cap.h := W.fnt.height; cap.col := W.col;
+    cap.w := w; cap.h := W.fnt.height; cap.col := CHR(W.col);
     Texts.Append(Graphics.T, W.buf); Graphics.Add(F.graph, cap);
     Mark(F, 1); RETURN cap
   END CaptionCopy;
 
-  PROCEDURE NewLine(F: Frame; G: Graphics.Graph; x, y, w, h: INTEGER);
+  PROCEDURE NewLine(F: Frame; G: Graphics.Graph; x, y, w, h: LONGINT);
     VAR line: Graphics.Line;
-  BEGIN NEW(line); line.col := Oberon.CurCol; line.x := x - F.x; line.y := y - F.y;
+  BEGIN NEW(line); line.col := CHR(Oberon.CurCol); line.x := x - F.x; line.y := y - F.y;
     line.w := w; line.h := h; line.do := Graphics.LineMethod;
     Graphics.Add(G, line); Mark(F, 1)
   END NewLine;
 
-  PROCEDURE Edit(F: Frame; x0, y0: INTEGER; k0: SET);
+  PROCEDURE Edit(F: Frame; x0, y0: LONGINT; k0: SET);
     VAR obj: Graphics.Object;
-      x1, y1, w, h, t: INTEGER;
+      x1, y1, w, h, t: LONGINT;
       beg, end, time: LONGINT;
       k1, k2: SET;
       mark, newmark: Location;
@@ -319,16 +321,16 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
     END
   END Edit;
 
-  PROCEDURE NewCaption(F: Frame; col: INTEGER; font: Fonts.Font);
+  PROCEDURE NewCaption(F: Frame; col: LONGINT; font: Fonts.Font);
   BEGIN Texts.Write(W, 0DX);
     NEW(newcap); newcap.x := F.mark.x - F.x; newcap.y := F.mark.y - F.y + font.minY;
-    newcap.w := 0; newcap.h := font.height; newcap.col := col;
+    newcap.w := 0; newcap.h := font.height; newcap.col := CHR(col);
     newcap.pos := Graphics.T.len + 1; newcap.len := 0; newcap.do := Graphics.CapMethod;
     Graphics.Add(F.graph, newcap); W.fnt := font; ; Mark(F, 1)
   END NewCaption;
 
   PROCEDURE InsertChar(F: Frame; ch: CHAR);
-    VAR w1, h1: INTEGER; DM: DispMsg;
+    VAR w1, h1: LONGINT; DM: DispMsg;
   BEGIN DM.graph := F.graph;
     Fonts.GetPat(W.fnt, ch, DM.w, DM.x1, DM.y1, w1, h1, DM.pat); DEC(DM.y1, W.fnt.minY);
     IF newcap.x + newcap.w + DM.w + F.x < F.X1 THEN
@@ -338,7 +340,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
   END InsertChar;
 
   PROCEDURE DeleteChar(F: Frame);
-    VAR w1, h1: INTEGER; ch: CHAR; pos: LONGINT;
+    VAR w1, h1: LONGINT; ch: CHAR; pos: LONGINT;
       DM: DispMsg; R: Texts.Reader;
   BEGIN DM.graph := F.graph;
     IF newcap.len > 0 THEN
@@ -356,35 +358,37 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
     VAR obj: Graphics.Object;
   BEGIN obj := F.graph.sel;
     IF (obj # NIL) & (F.graph.time >= time) THEN
-      CASE obj OF Graphics.Caption:
+      WITH obj: Graphics.Caption DO
         beg := obj.pos; end := obj.pos + obj.len; text := Graphics.T; time := F.graph.time
       END
     END
   END GetSelection;
 
   PROCEDURE Handle*(G: Display.Frame; VAR M: Display.FrameMsg);
-    VAR x, y, h: INTEGER;
+    VAR x, y, h: LONGINT;
       DM: DispMsg; dM: DrawMsg;
       G1: Frame;
   BEGIN
-    CASE G OF Frame:
-      CASE M OF
-      Oberon.InputMsg:
-        IF M.id = Oberon.track THEN
-          x := M.X - (M.X - G.x) MOD 4; y := M.Y - (M.Y - G.y) MOD 4;
-          IF M.keys # {} THEN Edit(G, x, y, M.keys) ELSE Oberon.DrawMouse(Crosshair, x, y) END
-        ELSIF M.id = Oberon.consume THEN
-          IF M.ch = 7FX THEN (*DEL*)
-            Erase(G); Graphics.Delete(G.graph); Mark(G, 1)
-          ELSIF (M.ch >= 20X) & (M.ch < 7FX) THEN
-            IF newcap # NIL THEN InsertChar(G, M.ch); Mark(G, 1)
-            ELSIF G.marked THEN
-              Defocus(G); Deselect(G); NewCaption(G, M.col, M.fnt); InsertChar(G, M.ch)
+    WITH G: Frame DO
+      IF M IS Oberon.InputMsg THEN
+        WITH M: Oberon.InputMsg DO
+          IF M.id = Oberon.track THEN
+            x := M.X - (M.X - G.x) MOD 4; y := M.Y - (M.Y - G.y) MOD 4;
+            IF M.keys # {} THEN Edit(G, x, y, M.keys) ELSE Oberon.DrawMouse(Crosshair, x, y) END
+          ELSIF M.id = Oberon.consume THEN
+            IF M.ch = 7FX THEN (*DEL*)
+              Erase(G); Graphics.Delete(G.graph); Mark(G, 1)
+            ELSIF (M.ch >= 20X) & (M.ch < 7FX) THEN
+              IF newcap # NIL THEN InsertChar(G, M.ch); Mark(G, 1)
+              ELSIF G.marked THEN
+                Defocus(G); Deselect(G); NewCaption(G, M.col, M.fnt); InsertChar(G, M.ch)
+              END
+            ELSIF (M.ch = 8X) & (newcap # NIL) THEN DeleteChar(G); Mark(G, 1)
             END
-          ELSIF (M.ch = 8X) & (newcap # NIL) THEN DeleteChar(G); Mark(G, 1)
           END
         END
-      | UpdateMsg:
+      ELSIF M IS UpdateMsg THEN
+        WITH M: UpdateMsg DO
           IF M.graph = G.graph THEN
             dM.f := G; dM.x := G.x; dM.y := G.y; dM.col := 0;
             IF M.id = drawobj THEN dM.mode := 0; M.obj.do.draw(M.obj, dM)
@@ -395,27 +399,41 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
             ELSIF M.id = drawdel THEN dM.mode := 3; Graphics.DrawSel(G.graph, dM)
             END
           END
-      | ChangedMsg:
-          IF M.graph = G.graph THEN SetChangeMark(G, M.mode) END
-      | SelQuery:
-          IF (G.graph.sel # NIL) & (M.time < G.graph.time) THEN M.f := G(Frame); M.time := G.graph.time END
-      | FocusQuery: IF G.marked THEN M.f := G END
-      | PosQuery: IF (G.X <= M.x) & (M.x < G.X1) & (G.Y <= M.y) & (M.y < G.Y1) THEN M.f := G END
-      | DispMsg:
-        DM := M;
+        END
+      ELSIF M IS ChangedMsg THEN
+        WITH M: ChangedMsg DO IF M.graph = G.graph THEN SetChangeMark(G, M.mode) END END
+      ELSIF M IS SelQuery THEN
+        WITH M: SelQuery DO
+          IF (G.graph.sel # NIL) & (M.time < G.graph.time) THEN M.f := G; M.time := G.graph.time END
+        END
+      ELSIF M IS FocusQuery THEN
+        WITH M: FocusQuery DO IF G.marked THEN M.f := G END END
+      ELSIF M IS PosQuery THEN
+        WITH M: PosQuery DO
+          IF (G.X <= M.x) & (M.x < G.X1) & (G.Y <= M.y) & (M.y < G.Y1) THEN M.f := G END
+        END
+      ELSIF M IS DispMsg THEN
+        DM := M(DispMsg);
         x := G.x + newcap.x + newcap.w; y := G.y + newcap.y;
         IF (DM.graph = G.graph) & (x >= G.X) & (x + DM.w < G.X1) & (y >= G.Y) & (y < G.Y1) THEN
           Display.CopyPattern(Oberon.CurCol, DM.pat, x + DM.x1, y + DM.y1, 2);
           Display.ReplConst(Display.white, x, y, DM.w, newcap.h, 2)
         END
-      | Oberon.ControlMsg:
+      ELSIF M IS Oberon.ControlMsg THEN
+        WITH M: Oberon.ControlMsg DO
           IF M.id = Oberon.neutralize THEN
             Oberon.RemoveMarks(G.X, G.Y, G.W, G.H); Defocus(G); DrawNorm(G); Graphics.Deselect(G.graph)
           ELSIF M.id = Oberon.defocus THEN Defocus(G)
           END
-      | Oberon.SelectionMsg: GetSelection(G, M.text, M.beg, M.end, M.time)
-      | Oberon.CopyMsg: Oberon.RemoveMarks(G.X, G.Y, G.W, G.H); Defocus(G); NEW(G1); G1^ := G^; M.F := G1
-      | MenuViewers.ModifyMsg: G.Y := M.Y; G.H := M.H; Restore(G)
+        END
+      ELSIF M IS Oberon.SelectionMsg THEN
+        WITH M: Oberon.SelectionMsg DO GetSelection(G, M.text, M.beg, M.end, M.time) END
+      ELSIF M IS Oberon.CopyMsg THEN
+        WITH M: Oberon.CopyMsg DO
+          Oberon.RemoveMarks(G.X, G.Y, G.W, G.H); Defocus(G); NEW(G1); G1^ := G^; M.F := G1
+        END
+      ELSIF M IS MenuViewers.ModifyMsg THEN
+        WITH M: MenuViewers.ModifyMsg DO G.Y := M.Y; G.H := M.H; Restore(G) END
       END
     END
   END Handle;
@@ -426,7 +444,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
 
   (*------------------- Draw Methods -----------------------*)
 
-  PROCEDURE ReplConst*(F: Frame; col, x, y, w, h, mode: INTEGER);
+  PROCEDURE ReplConst*(F: Frame; col, x, y, w, h, mode: LONGINT);
   BEGIN
     IF x < F.X THEN DEC(w, F.X-x); x := F.X END ;
     IF x+w >= F.X1 THEN w := F.X1 - x END ;
@@ -435,7 +453,7 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
     Display.ReplConst(col, x, y, w, h, mode)
   END ReplConst;
 
-  PROCEDURE ReplPattern*(F: Frame; col, patadr, x, y, w, h, mode: INTEGER);
+  PROCEDURE ReplPattern*(F: Frame; col, patadr, x, y, w, h, mode: LONGINT);
   BEGIN
     IF x < F.X THEN DEC(w, F.X-x); x := F.X END ;
     IF x+w >= F.X1 THEN w := F.X1 - x END ;
@@ -449,12 +467,12 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
         = 1: normal -> selected,
         = 2: selected -> normal,
         = 3: erase*)
-    VAR x, y, w, h, col: INTEGER; f: Frame;
+    VAR x, y, w, h, col: LONGINT; f: Frame;
   BEGIN
-    CASE M OF DrawMsg:
+    WITH M: DrawMsg DO
       x := obj.x + M.x; y := obj.y + M.y; w := obj.w; h := obj.h; f := M.f;
       IF (x+w > f.X) & (x < f.X1) & (y+h > f.Y) & (y < f.Y1) THEN
-        col := obj.col;
+        col := ORD(obj.col);
         IF (M.mode = 0) & obj.selected OR (M.mode = 1) THEN
           ReplPattern(f, col, Display.grey, x, y, w, h, Display.replace)
         ELSIF M.mode IN {0, 2} THEN ReplConst(f, col, x, y, w, h, Display.replace)
@@ -465,19 +483,19 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
   END DrawLine;
 
   PROCEDURE DrawCaption(obj: Graphics.Object; VAR M: Graphics.Msg);
-    VAR x, y, dx, x0, x1, y0, y1, w, h, w1, h1, col: INTEGER;
+    VAR x, y, dx, x0, x1, y0, y1, w, h, w1, h1, col: LONGINT;
       f: Frame;
-      ch: CHAR; pat: INTEGER; fnt: Fonts.Font;
+      ch: CHAR; pat: LONGINT; fnt: Fonts.Font;
       R: Texts.Reader;
   BEGIN
-    CASE M OF DrawMsg:
+    WITH M: DrawMsg DO
       x := obj.x + M.x; y := obj.y + M.y; w := obj.w; h := obj.h; f := M.f;
       IF (f.X <= x) & (x <= f.X1) & (f.Y <= y) & (y+h <= f.Y1) THEN
         IF x+w > f.X1 THEN w := f.X1-x END ;
         Texts.OpenReader(R, Graphics.T, obj(Graphics.Caption).pos); Texts.Read(R, ch);
         IF M.mode = 0 THEN
           IF ch >= " " THEN
-            fnt := R.fnt; x0 := x; y0 := y - fnt.minY; col := obj.col;
+            fnt := R.fnt; x0 := x; y0 := y - fnt.minY; col := ORD(obj.col);
             REPEAT Fonts.GetPat(fnt, ch, dx, x1, y1, w1, h1, pat);
               IF x0+x1+w1 <= f.X1 THEN
                 Display.CopyPattern(col, pat, x0+x1, y0+y1, Display.paint); INC(x0, dx); Texts.Read(R, ch)
@@ -494,15 +512,15 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
   END DrawCaption;
 
   PROCEDURE DrawMacro(obj: Graphics.Object; VAR M: Graphics.Msg);
-    VAR x, y, w, h: INTEGER;
+    VAR x, y, w, h: LONGINT;
       f: Frame; M1: DrawMsg;
   BEGIN
-    CASE M OF DrawMsg:
+    WITH M: DrawMsg DO
       x := obj.x + M.x; y := obj.y + M.y; w := obj.w; h := obj.h; f := M.f;
       IF (x+w > f.X) & (x < f.X1) & (y+h > f.Y) & (y < f.Y1) THEN
         M1.x := x; M1.y := y;
         IF M.mode = 0 THEN
-          M1.f := f; M1.col := obj.col; M1.mode := 0; Graphics.DrawMac(obj(Graphics.Macro).mac, M1);
+          M1.f := f; M1.col := ORD(obj.col); M1.mode := 0; Graphics.DrawMac(obj(Graphics.Macro).mac, M1);
           IF obj.selected THEN ReplPattern(f, Display.white, dotted, x, y, w, h, Display.invert) END
         ELSIF M.mode IN {1, 2} THEN ReplPattern(f, Display.white, dotted, x, y, w, h, Display.invert)
         ELSIF M.mode = 3 THEN ReplConst(f, Display.black, x, y, w, h, Display.replace)
@@ -521,9 +539,9 @@ MODULE GraphicFrames; (*NW 18.4.88 / 18.11.2013 / 27.8.2018*)
 
 BEGIN DW := Display.Width - 8; DH := Display.Height - 8; CL := 0;
   Texts.OpenWriter(W);
-  tack := SYSTEM.ADR($0707 4122 1408 1422 4100$);
-  dotted := SYSTEM.ADR($2004 0000 1111 1111 0000 0000 0000 0000 0000 0000$);
-  dotted1 := SYSTEM.ADR($2004 0000 1111 1111 0000 0000 4444 4444 0000 0000$);
+  SYS.PutHex(tackP, 0, "0707 4122 1408 1422 4100"); tack := SYSTEM.ADR(tackP);
+  SYS.PutHex(dottedP, 0, "2004 0000 1111 1111 0000 0000 0000 0000 0000 0000"); dotted := SYSTEM.ADR(dottedP);
+  SYS.PutHex(dotted1P, 0, "2004 0000 1111 1111 0000 0000 4444 4444 0000 0000"); dotted1 := SYSTEM.ADR(dotted1P);
   Crosshair.Fade := FlipCross; Crosshair.Draw := FlipCross;
   Graphics.InstallDrawMethods(DrawLine, DrawCaption, DrawMacro)
 END GraphicFrames.

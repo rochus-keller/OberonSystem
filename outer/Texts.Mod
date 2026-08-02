@@ -1,5 +1,5 @@
 MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
-  IMPORT Files, Fonts;
+  IMPORT SYSTEM, Files, Fonts;
 
   CONST (*scanner symbol classes*)
     Inval* = 0;         (*invalid symbol*)
@@ -21,12 +21,12 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
       f: Files.File;
       off, len: LONGINT;
       fnt: Fonts.Font;
-      col, voff: INTEGER;
+      col, voff: LONGINT;
       prev, next: Piece
     END;
 
     Text* = POINTER TO TextDesc;
-    Notifier* = PROCEDURE (T: Text; op: INTEGER; beg, end: LONGINT);
+    Notifier* = PROCEDURE (T: Text; op: LONGINT; beg, end: LONGINT);
     TextDesc* = RECORD
       len*: LONGINT;
       changed*: BOOLEAN;
@@ -39,7 +39,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     Reader* = RECORD
       eot*: BOOLEAN;
       fnt*: Fonts.Font;
-      col*, voff*: INTEGER;
+      col*, voff*: LONGINT;
       ref: Piece;
       org: LONGINT;
       off: LONGINT;
@@ -48,12 +48,12 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
 
     Scanner* = RECORD (Reader)
       nextCh*: CHAR;
-      line*, class*: INTEGER;
+      line*, class*: LONGINT;
       i*: LONGINT;
       x*: REAL;
       y*: LONGREAL;
       c*: CHAR;
-      len*: INTEGER;
+      len*: LONGINT;
       s*: ARRAY 32 OF CHAR
     END;
 
@@ -66,7 +66,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     Writer* = RECORD
       buf*: Buffer;
       fnt*: Fonts.Font;
-      col*, voff*: INTEGER;
+      col*, voff*: LONGINT;
       rider: Files.Rider
     END;     
 
@@ -83,22 +83,22 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
   PROCEDURE Load* (VAR R: Files.Rider; T: Text);
     VAR Q, q, p: Piece;
       off: LONGINT;
-      N, fno: INTEGER; bt: BYTE;
+      N, fno: LONGINT; bt: SYSTEM.BYTE;
       f: Files.File;
       FName: ARRAY 32 OF CHAR;
       Dict: ARRAY 32 OF Fonts.Font;
   BEGIN f := Files.Base(R); N := 1; Q := Trailer(); p := Q;
-    Files.ReadInt(R, off); Files.ReadByte(R, bt); fno := bt;
+    Files.ReadInt(R, off); Files.ReadByte(R, bt); fno := ORD(bt);
     WHILE fno # 0 DO
       IF fno = N THEN
         Files.ReadString(R, FName);
         Dict[N] := Fonts.This(FName); INC(N)
       END;
       NEW(q); q.fnt := Dict[fno];
-      Files.ReadByte(R, bt); q.col := bt;
-      Files.ReadByte(R, bt); q.voff := ASR(LSL(bt, -24), 24);
+      Files.ReadByte(R, bt); q.col := ORD(bt);
+      Files.ReadByte(R, bt); q.voff := ASH(SYSTEM.LSH(ORD(bt), -24), -24);
       Files.ReadInt(R, q.len);
-      Files.ReadByte(R, bt); fno := bt;
+      Files.ReadByte(R, bt); fno := ORD(bt);
       q.f := f; q.off := off; off := off + q.len;
       p.next := q; q.prev := p; p := q
     END;
@@ -128,7 +128,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     VAR p, q: Piece;
       R: Files.Rider;
       off, rlen, pos: LONGINT;
-      N, n: INTEGER;
+      N, n: LONGINT;
       ch: CHAR;
       Dict: ARRAY 32, 32 OF CHAR;
   BEGIN pos := Files.Pos(W); Files.WriteInt(W, 0); (*place holder*)
@@ -138,12 +138,12 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
       WHILE (q # T.trailer) & (q.fnt = p.fnt) & (q.col = p.col) & (q.voff = p.voff) DO
         rlen := rlen + q.len; q := q.next
       END;
-      Dict[N] := p.fnt.name;
+      COPY(p.fnt.name, Dict[N]);
       n := 1;
       WHILE Dict[n] # p.fnt.name DO INC(n) END;
-      Files.WriteByte(W, n);
+      Files.WriteByte(W, CHR(n));
       IF n = N THEN Files.WriteString(W, p.fnt.name); INC(N) END;
-      Files.WriteByte(W, p.col); Files.WriteByte(W, p.voff); Files.WriteInt(W, rlen);
+      Files.WriteByte(W, CHR(p.col)); Files.WriteByte(W, CHR(p.voff MOD 100H)); Files.WriteInt(W, rlen);
       p := q
     END;
     Files.WriteByte(W, 0); Files.WriteInt(W, T.len);
@@ -264,7 +264,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     T.changed := TRUE; T.notify(T, delete, beg, end)
   END Delete;
 
-  PROCEDURE ChangeLooks* (T: Text; beg, end: LONGINT; sel: SET; fnt: Fonts.Font; col, voff: INTEGER);
+  PROCEDURE ChangeLooks* (T: Text; beg, end: LONGINT; sel: SET; fnt: Fonts.Font; col, voff: LONGINT);
     VAR pb, pe, p: Piece; org: LONGINT;
   BEGIN
     IF end > T.len THEN end := T.len END;
@@ -280,7 +280,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     T.changed := TRUE; T.notify(T, replace, beg, end)
   END ChangeLooks;
 
-  PROCEDURE Attributes*(T: Text; pos: LONGINT; VAR fnt: Fonts.Font; VAR col, voff: INTEGER);
+  PROCEDURE Attributes*(T: Text; pos: LONGINT; VAR fnt: Fonts.Font; VAR col, voff: LONGINT);
     VAR p: Piece; org: LONGINT;
   BEGIN FindPiece(T, pos, org, p); fnt := p.fnt; col := p.col; voff := p.voff
   END Attributes;
@@ -320,7 +320,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     x = 1.m * 2^(e-127)   bit 0: sign, bits 1- 8: e, bits  9-31: m
     x = 1.m * 2^(e-1023)  bit 0: sign, bits 1-11: e, bits 12-63: m *)
 
-  PROCEDURE Ten(n: INTEGER): REAL;
+  PROCEDURE Ten(n: LONGINT): REAL;
     VAR t, p: REAL;
   BEGIN t := 1.0; p := 10.0;   (*compute 10^n *)
     WHILE n > 0 DO
@@ -334,7 +334,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     CONST maxExp = 38; maxM = 16777216; (*2^24*)
     VAR ch, term: CHAR;
       neg, negE, hex: BOOLEAN;
-      i, j, h, d, e, n, s: INTEGER;
+      i, j, h, d, e, n, s: LONGINT;
       k: LONGINT;
       x: REAL;
   BEGIN ch := S.nextCh; i := 0;
@@ -377,7 +377,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
             END ;
             IF negE THEN DEC(e, s) ELSE INC(e, s) END ;
           END ;
-          x := FLT(n); DEC(e, j);
+          x := n; DEC(e, j);
           IF e < 0 THEN
             IF e >= -maxExp THEN x := x / Ten(-e) ELSE x := 0.0 END
           ELSIF e > 0 THEN
@@ -408,11 +408,11 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
   BEGIN W.fnt := fnt
   END SetFont;
 
-  PROCEDURE SetColor* (VAR W: Writer; col: INTEGER);
+  PROCEDURE SetColor* (VAR W: Writer; col: LONGINT);
   BEGIN W.col := col
   END SetColor;
 
-  PROCEDURE SetOffset* (VAR W: Writer; voff: INTEGER);
+  PROCEDURE SetOffset* (VAR W: Writer; voff: LONGINT);
   BEGIN W.voff := voff
   END SetOffset;
 
@@ -434,16 +434,16 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
   END WriteLn;
 
   PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
-    VAR i: INTEGER;
+    VAR i: LONGINT;
   BEGIN i := 0;
     WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
   END WriteString;
 
   PROCEDURE WriteInt* (VAR W: Writer; x, n: LONGINT);
-    VAR i: INTEGER; x0: LONGINT;
+    VAR i: LONGINT; x0: LONGINT;
       a: ARRAY 10 OF CHAR;
   BEGIN
-    IF ROR(x, 31) = 1 THEN WriteString(W, " -2147483648")
+    IF SYSTEM.ROT(x, -31) = 1 THEN WriteString(W, " -2147483648")
     ELSE i := 0;
       IF x < 0 THEN DEC(n); x0 := -x ELSE x0 := x END;
       REPEAT
@@ -456,7 +456,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
   END WriteInt;
 
   PROCEDURE WriteHex* (VAR W: Writer; x: LONGINT);
-    VAR i: INTEGER; y: LONGINT;
+    VAR i: LONGINT; y: LONGINT;
       a: ARRAY 10 OF CHAR;
   BEGIN i := 0; Write(W, " ");
     REPEAT y := x MOD 10H;
@@ -466,10 +466,10 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     REPEAT DEC(i); Write(W, a[i]) UNTIL i = 0
   END WriteHex;
 
- PROCEDURE WriteReal* (VAR W: Writer; x: REAL; n: INTEGER);
-    VAR e, i, m: INTEGER;
+ PROCEDURE WriteReal* (VAR W: Writer; x: REAL; n: LONGINT);
+    VAR e, i, m: LONGINT;
       d: ARRAY 16 OF CHAR;
-  BEGIN e := ASR(ORD(x), 23) MOD 100H;  (*binary exponent*)
+  BEGIN e := ASH(SYSTEM.VAL(LONGINT, x), -23) MOD 100H;  (*binary exponent*)
     IF e = 0 THEN
       WriteString(W, "  0 ");
       WHILE n >= 3 DO Write(W, " "); DEC(n) END
@@ -480,7 +480,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
       IF x < 0.0 THEN Write(W, "-"); x := -x ELSE Write(W, " ") END ;
       e := (e - 127) * 77 DIV 256 - 6;  (*decimal exponent*)
       IF e >= 0 THEN x := x / Ten(e) ELSE x := Ten(-e) * x END ;
-      m := FLOOR(x + 0.5); i := 0;
+      m := ENTIER(x + 0.5); i := 0;
       IF m >= 10000000 THEN INC(e); m := m DIV 10 END ;
       REPEAT d[i] := CHR(m MOD 10 + 30H); m := m DIV 10; INC(i) UNTIL m = 0;
       DEC(i); Write(W, d[i]); Write(W, ".");
@@ -492,15 +492,15 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017*)
     END
   END WriteReal;
 
-  PROCEDURE WriteRealFix* (VAR W: Writer; x: REAL; n, k: INTEGER);
-    VAR i, m: INTEGER; neg: BOOLEAN;
+  PROCEDURE WriteRealFix* (VAR W: Writer; x: REAL; n, k: LONGINT);
+    VAR i, m: LONGINT; neg: BOOLEAN;
       d: ARRAY 12 OF CHAR;
   BEGIN
     IF x = 0.0 THEN WriteString(W, "  0")
     ELSE
       IF x < 0.0 THEN x := -x; neg := TRUE ELSE neg := FALSE END ;
       IF k > 7 THEN k := 7 END ;
-      x := Ten(k) * x; m := FLOOR(x + 0.5);
+      x := Ten(k) * x; m := ENTIER(x + 0.5);
       i := 0;
       REPEAT d[i] := CHR(m MOD 10 + 30H); m := m DIV 10; INC(i) UNTIL m = 0;
       Write(W, " ");

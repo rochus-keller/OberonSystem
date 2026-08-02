@@ -13,7 +13,7 @@ MODULE Draw; (*NW 29.6.88 / 12.11.94 / 18.11.2013*)
     Store, Print, Macro, Ticks, Restore*)
 
   PROCEDURE Open*;
-    VAR X, Y: INTEGER;
+    VAR X, Y: LONGINT;
       beg, end, t: LONGINT;
       G: Graphics.Graph;
       F: GraphicFrames.Frame;
@@ -102,7 +102,7 @@ MODULE Draw; (*NW 29.6.88 / 12.11.94 / 18.11.2013*)
   END Restore;
 
   PROCEDURE Backup (VAR name: ARRAY OF CHAR);
-    VAR res, i: INTEGER; ch: CHAR;
+    VAR res, i: LONGINT; ch: CHAR;
       bak: ARRAY 32 OF CHAR;
   BEGIN i := 0; ch := name[0];
     WHILE ch > 0X DO bak[i] := ch; INC(i); ch := name[i] END ;
@@ -146,7 +146,7 @@ MODULE Draw; (*NW 29.6.88 / 12.11.94 / 18.11.2013*)
       Lname: ARRAY 32 OF CHAR;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF S.class = Texts.Name THEN
-      Lname := S.s; Texts.Scan(S);
+      COPY(S.s, Lname); Texts.Scan(S);
       IF S.class = Texts.Name THEN GraphicFrames.Macro(Lname, S.s) END ;
     END
   END Macro;

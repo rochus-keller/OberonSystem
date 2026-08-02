@@ -6,12 +6,12 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
   TYPE Viewer* = POINTER TO ViewerDesc;
 
     ViewerDesc* = RECORD (Viewers.ViewerDesc)
-      menuH*: INTEGER
+      menuH*: LONGINT
     END;
 
     ModifyMsg* = RECORD (Display.FrameMsg)
-      id*: INTEGER;
-      dY*, Y*, H*: INTEGER
+      id*: LONGINT;
+      dY*, Y*, H*: LONGINT
     END;
 
   PROCEDURE Copy (V: Viewer; VAR V1: Viewer);
@@ -30,8 +30,8 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
     Display.ReplConst(FrameColor, V.X + 1, V.Y + V.H - 1, V.W - 2, 1, Display.replace)
   END Draw;
 
-  PROCEDURE Extend (V: Viewer; newY: INTEGER);
-    VAR dH: INTEGER;
+  PROCEDURE Extend (V: Viewer; newY: LONGINT);
+    VAR dH: LONGINT;
   BEGIN dH := V.Y - newY;
     IF dH > 0 THEN
       Display.ReplConst(Display.black, V.X + 1, newY + 1, V.W - 2, dH, Display.replace);
@@ -41,12 +41,12 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
     END
   END Extend;
 
-  PROCEDURE Reduce (V: Viewer; newY: INTEGER);
+  PROCEDURE Reduce (V: Viewer; newY: LONGINT);
   BEGIN Display.ReplConst(FrameColor, V.X + 1, newY, V.W - 2, 1, Display.replace)
   END Reduce;
 
-  PROCEDURE Grow (V: Viewer; oldH: INTEGER);
-    VAR dH: INTEGER;
+  PROCEDURE Grow (V: Viewer; oldH: LONGINT);
+    VAR dH: LONGINT;
   BEGIN dH := V.H - oldH;
     IF dH > 0 THEN
       Display.ReplConst(FrameColor, V.X, V.Y + oldH, 1, dH, Display.replace);
@@ -55,11 +55,11 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
     END
   END Grow;
 
-  PROCEDURE Shrink (V: Viewer; newH: INTEGER);
+  PROCEDURE Shrink (V: Viewer; newH: LONGINT);
   BEGIN Display.ReplConst(FrameColor, V.X + 1, V.Y + newH - 1, V.W - 2, 1, Display.replace)
   END Shrink;
 
-  PROCEDURE Adjust (F: Display.Frame; id, dY, Y, H: INTEGER);
+  PROCEDURE Adjust (F: Display.Frame; id, dY, Y, H: LONGINT);
     VAR M: ModifyMsg;
   BEGIN M.id := id; M.dY := dY; M.Y := Y; M.H := H; F.handle(F, M); F.Y := Y; F.H := H
   END Adjust;
@@ -78,7 +78,7 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
     END
   END Restore;
 
-  PROCEDURE Modify (V: Viewer; Y, H: INTEGER);
+  PROCEDURE Modify (V: Viewer; Y, H: LONGINT);
     VAR Menu, Main: Display.Frame;
   BEGIN Menu := V.dsc; Main := V.dsc.next;
     IF Y < V.Y THEN (*extend*)
@@ -102,10 +102,10 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
     END
   END Modify;
 
-  PROCEDURE Change (V: Viewer; X, Y: INTEGER; Keys: SET);
+  PROCEDURE Change (V: Viewer; X, Y: LONGINT; Keys: SET);
     VAR Menu, Main: Display.Frame;
       V1: Viewers.Viewer;
-      keysum: SET; Y0, dY, H: INTEGER;
+      keysum: SET; Y0, dY, H: LONGINT;
   BEGIN (*Keys # {}*)
     Menu := V.dsc; Main := V.dsc.next;
     Oberon.DrawMouseArrow(X, Y);
@@ -125,12 +125,13 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
         IF Y > Y0 THEN (*extend*) dY := Y - Y0;
           V1 := Viewers.Next(V);
           IF V1.state > 1 THEN
-            CASE V1 OF
-            Viewer:
-              IF V1.H < V1.menuH + 2 THEN dY := 0
-              ELSIF V1.H < V1.menuH + 2 + dY THEN dY := V1.H - V1.menuH - 2
-              END |
-            Viewers.Viewer: IF V1.H < 1 + dY THEN dY := V1.H - 1 END
+            IF V1 IS Viewer THEN
+              WITH V1: Viewer DO
+                IF V1.H < V1.menuH + 2 THEN dY := 0
+                ELSIF V1.H < V1.menuH + 2 + dY THEN dY := V1.H - V1.menuH - 2
+                END
+              END
+            ELSE IF V1.H < 1 + dY THEN dY := V1.H - 1 END
             END
           ELSIF V1.H < dY THEN dY := V1.H
           END;
@@ -166,39 +167,44 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
   END Suspend;
 
   PROCEDURE Handle* (V: Display.Frame; VAR M: Display.FrameMsg);
-    VAR X, Y: INTEGER;
+    VAR X, Y: LONGINT;
       Menu, Main: Display.Frame; V1: Viewer;
   BEGIN Menu := V.dsc; Main := V.dsc.next;
-      CASE M OF
-      Oberon.InputMsg:
-        IF M.id = Oberon.track THEN
-          X := M.X; Y := M.Y;
-          IF Y < V.Y + 1 THEN Oberon.DrawMouseArrow(X, Y)
-          ELSIF Y < V.Y + V.H - V(Viewer).menuH THEN Main.handle(Main, M)
-          ELSIF Y < V.Y + V.H - V(Viewer).menuH + 2 THEN Menu.handle(Menu, M)
-          ELSIF Y < V.Y + V.H - 1 THEN
-            IF 2 IN M.keys THEN Change(V(Viewer), X, Y, M.keys) ELSE Menu.handle(Menu, M) END
-          ELSE Oberon.DrawMouseArrow(X, Y)
+      IF M IS Oberon.InputMsg THEN
+        WITH M: Oberon.InputMsg DO
+          IF M.id = Oberon.track THEN
+            X := M.X; Y := M.Y;
+            IF Y < V.Y + 1 THEN Oberon.DrawMouseArrow(X, Y)
+            ELSIF Y < V.Y + V.H - V(Viewer).menuH THEN Main.handle(Main, M)
+            ELSIF Y < V.Y + V.H - V(Viewer).menuH + 2 THEN Menu.handle(Menu, M)
+            ELSIF Y < V.Y + V.H - 1 THEN
+              IF 2 IN M.keys THEN Change(V(Viewer), X, Y, M.keys) ELSE Menu.handle(Menu, M) END
+            ELSE Oberon.DrawMouseArrow(X, Y)
+            END
+          ELSE Menu.handle(Menu, M); Main.handle(Main, M)
           END
-        ELSE Menu.handle(Menu, M); Main.handle(Main, M)
-        END |
-      Oberon.ControlMsg:
-        IF M.id = Oberon.mark THEN
-          X := M.X; Y := M.Y; Oberon.DrawMouseArrow(X, Y); Oberon.DrawPointer(X, Y)
-        ELSE Menu.handle(Menu, M); Main.handle(Main, M)
-        END |
-      Oberon.CopyMsg:
-        Copy(V(Viewer), V1); M.F := V1 |
-      Viewers.ViewerMsg:
-        IF M.id = Viewers.restore THEN Restore(V(Viewer))
-        ELSIF M.id = Viewers.modify THEN Modify(V(Viewer), M.Y, M.H)
-        ELSIF M.id = Viewers.suspend THEN Suspend(V(Viewer))
-        END |
-      Display.FrameMsg: Menu.handle(Menu, M); Main.handle(Main, M)
+        END
+      ELSIF M IS Oberon.ControlMsg THEN
+        WITH M: Oberon.ControlMsg DO
+          IF M.id = Oberon.mark THEN
+            X := M.X; Y := M.Y; Oberon.DrawMouseArrow(X, Y); Oberon.DrawPointer(X, Y)
+          ELSE Menu.handle(Menu, M); Main.handle(Main, M)
+          END
+        END
+      ELSIF M IS Oberon.CopyMsg THEN
+        WITH M: Oberon.CopyMsg DO Copy(V(Viewer), V1); M.F := V1 END
+      ELSIF M IS Viewers.ViewerMsg THEN
+        WITH M: Viewers.ViewerMsg DO
+          IF M.id = Viewers.restore THEN Restore(V(Viewer))
+          ELSIF M.id = Viewers.modify THEN Modify(V(Viewer), M.Y, M.H)
+          ELSIF M.id = Viewers.suspend THEN Suspend(V(Viewer))
+          END
+        END
+      ELSE Menu.handle(Menu, M); Main.handle(Main, M)
       END
   END Handle;
 
-  PROCEDURE New* (Menu, Main: Display.Frame; menuH, X, Y: INTEGER): Viewer; 
+  PROCEDURE New* (Menu, Main: Display.Frame; menuH, X, Y: LONGINT): Viewer; 
     VAR V: Viewer;
   BEGIN NEW(V);
     V.handle := Handle; V.dsc := Menu; V.dsc.next := Main; V.menuH := menuH;

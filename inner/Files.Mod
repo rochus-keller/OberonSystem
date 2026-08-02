@@ -1,5 +1,5 @@
 MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
-  IMPORT SYSTEM, Kernel, FileDir;
+  IMPORT SYSTEM, SYS, Kernel, FileDir;
 
   (*A file consists of a sequence of pages. The first page
     contains the header. Part of the header is the page table, an array
@@ -12,33 +12,33 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       STS       = FileDir.SecTabSize;
       XS        = FileDir.IndexSize;
 
-  TYPE  DiskAdr = INTEGER;
+  TYPE  DiskAdr = LONGINT;
       File*    = POINTER TO FileDesc;
       Buffer  = POINTER TO BufferRecord;
       Index   = POINTER TO IndexRecord;
 
     Rider* =
       RECORD eof*: BOOLEAN;
-        res*: INTEGER;
+        res*: LONGINT;
         file: File;
-        apos, bpos: INTEGER;
+        apos, bpos: LONGINT;
         buf: Buffer
       END ;
 
     FileDesc =
-      RECORD next: INTEGER; (*list of files invisible to the GC*)
-        nofbufs, aleng, bleng: INTEGER;
+      RECORD next: LONGINT; (*list of files invisible to the GC*)
+        nofbufs, aleng, bleng: LONGINT;
         modH, registered: BOOLEAN;
         firstbuf: Buffer;
         sechint: DiskAdr;
         name: FileDir.FileName;
-        date: INTEGER;
+        date: LONGINT;
         ext:  ARRAY FileDir.ExTabSize OF Index;
         sec: FileDir.SectorTable
       END ;
 
     BufferRecord =
-      RECORD apos, lim: INTEGER;
+      RECORD apos, lim: LONGINT;
         mod: BOOLEAN;
         next: Buffer;
         data: FileDir.DataSector
@@ -56,11 +56,11 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       0 <= apos <= aleng < PgTabSize
       (apos < aleng) & (lim = SS) OR (apos = aleng) *)
 
-  VAR root: INTEGER (*File*);  (*list of open files*)
+  VAR root: LONGINT (*File*);  (*list of open files*)
 
   PROCEDURE Check(s: ARRAY OF CHAR;
-        VAR name: FileDir.FileName; VAR res: INTEGER);
-    VAR i: INTEGER; ch: CHAR;
+        VAR name: FileDir.FileName; VAR res: LONGINT);
+    VAR i: LONGINT; ch: CHAR;
   BEGIN ch := s[0]; i := 0;
     IF (ch >= "A") & (ch <= "Z") OR (ch >= "a") & (ch <= "z") THEN
       REPEAT name[i] := ch; INC(i); ch := s[i]
@@ -77,7 +77,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END Check;
 
   PROCEDURE Old*(name: ARRAY OF CHAR): File;
-    VAR i, k, res: INTEGER;
+    VAR i, k, res: LONGINT;
       f: File;
       header: DiskAdr;
       buf: Buffer;
@@ -93,7 +93,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         IF f = NIL THEN (*file not yet present*)
           NEW(buf); buf.apos := 0; buf.next := buf; buf.mod := FALSE;
           F := SYSTEM.VAL(FileDir.FileHd, SYSTEM.ADR(buf.data));
-          Kernel.GetSector(header, buf.data); ASSERT(F.mark = FileDir.HeaderMark);
+          Kernel.GetSector(header, buf.data); SYS.ASSERT(F.mark = FileDir.HeaderMark);
           NEW(f); f.aleng := F.aleng; f.bleng := F.bleng; f.date := F.date;
           IF f.aleng = 0 THEN buf.lim := f.bleng ELSE buf.lim := SS END ;
           f.firstbuf := buf; f.nofbufs := 1; f.name := namebuf; f.registered := TRUE;
@@ -104,7 +104,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
             Kernel.GetSector(inxpg.adr, inxpg.sec); f.ext[i] := inxpg; INC(i)
           END ;
           WHILE i < FileDir.ExTabSize DO f.ext[i] := NIL; INC(i) END ;
-          f.sechint := header; f.modH := FALSE; f.next := root; root := SYSTEM.VAL(INTEGER, f)
+          f.sechint := header; f.modH := FALSE; f.next := root; root := SYSTEM.VAL(LONGINT, f)
         END
       END
     END ;
@@ -112,7 +112,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END Old;
 
   PROCEDURE New*(name: ARRAY OF CHAR): File;
-    VAR i, res: INTEGER;
+    VAR i, res: LONGINT;
       f: File;
       buf: Buffer;
       F: FileDir.FileHd;
@@ -136,13 +136,13 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END New;
 
   PROCEDURE UpdateHeader(f: File; VAR F: FileDir.FileHeader);
-    VAR k: INTEGER;
+    VAR k: LONGINT;
   BEGIN F.aleng := f.aleng; F.bleng := f.bleng;
     F.sec := f.sec; k := (f.aleng + (XS-STS)) DIV XS;
     WHILE k > 0 DO DEC(k); F.ext[k] := f.ext[k].adr END
   END UpdateHeader;
 
-  PROCEDURE ReadBuf(f: File; buf: Buffer; pos: INTEGER);
+  PROCEDURE ReadBuf(f: File; buf: Buffer; pos: LONGINT);
     VAR sec: DiskAdr;
   BEGIN
     IF pos < STS THEN sec := f.sec[pos]
@@ -154,7 +154,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END ReadBuf;
 
   PROCEDURE WriteBuf(f: File; buf: Buffer);
-    VAR i, k: INTEGER;
+    VAR i, k: LONGINT;
       secadr: DiskAdr; inx: Index;
   BEGIN 
     IF buf.apos < STS THEN
@@ -179,7 +179,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     Kernel.PutSector(secadr, buf.data); buf.mod := FALSE
   END WriteBuf;
 
-  PROCEDURE Buf(f: File; pos: INTEGER): Buffer;
+  PROCEDURE Buf(f: File; pos: LONGINT): Buffer;
     VAR buf: Buffer;
   BEGIN buf := f.firstbuf;
     WHILE (buf.apos # pos) & (buf.next # f.firstbuf) DO buf := buf.next END ;
@@ -187,7 +187,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     RETURN buf
   END Buf;
 
-  PROCEDURE GetBuf(f: File; pos: INTEGER): Buffer;
+  PROCEDURE GetBuf(f: File; pos: LONGINT): Buffer;
     VAR buf: Buffer;
   BEGIN buf := f.firstbuf;
     WHILE (buf.apos # pos) & (buf.next # f.firstbuf) DO buf := buf.next END ;
@@ -203,7 +203,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END GetBuf;
 
   PROCEDURE Unbuffer(f: File);
-    VAR i, k: INTEGER;
+    VAR i, k: LONGINT;
       buf: Buffer;
       inx: Index;
       head: FileDir.FileHeader;
@@ -233,7 +233,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     IF (f # NIL) & (f.name[0] # 0X) THEN
       Unbuffer(f);
       IF ~f.registered THEN
-        FileDir.Insert(f.name, f.sec[0]); f.registered := TRUE; f.next := root; root := SYSTEM.VAL(INTEGER, f)
+        FileDir.Insert(f.name, f.sec[0]); f.registered := TRUE; f.next := root; root := SYSTEM.VAL(LONGINT, f)
       END
     END
   END Register;
@@ -244,7 +244,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END Close;
 
   PROCEDURE Purge*(f: File);
-    VAR a, i, j, k: INTEGER;
+    VAR a, i, j, k: LONGINT;
       ind: FileDir.IndexSector;
   BEGIN
     IF f # NIL THEN a := f.aleng + 1; f.aleng := 0; f.bleng := HS;
@@ -260,7 +260,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     END
   END Purge;
 
-  PROCEDURE Delete*(name: ARRAY OF CHAR; VAR res: INTEGER);
+  PROCEDURE Delete*(name: ARRAY OF CHAR; VAR res: LONGINT);
     VAR adr: DiskAdr;
         namebuf: FileDir.FileName;
   BEGIN Check(name, namebuf, res);
@@ -270,7 +270,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     END
   END Delete;
 
-  PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: INTEGER);
+  PROCEDURE Rename*(old, new: ARRAY OF CHAR; VAR res: LONGINT);
     VAR adr: DiskAdr;
         oldbuf, newbuf: FileDir.FileName;
         head: FileDir.FileHeader;
@@ -288,18 +288,18 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     END
   END Rename;
 
-  PROCEDURE Length*(f: File): INTEGER;
+  PROCEDURE Length*(f: File): LONGINT;
   BEGIN RETURN f.aleng * SS + f.bleng - HS
   END Length;
 
-  PROCEDURE Date*(f: File): INTEGER;
+  PROCEDURE Date*(f: File): LONGINT;
   BEGIN RETURN f.date
   END Date;
 
   (*---------------------------Read---------------------------*)
 
-  PROCEDURE Set*(VAR r: Rider; f: File; pos: INTEGER);
-    VAR a, b: INTEGER;
+  PROCEDURE Set*(VAR r: Rider; f: File; pos: LONGINT);
+    VAR a, b: LONGINT;
   BEGIN  r.eof := FALSE; r.res := 0;
     IF f # NIL THEN
       IF pos < 0 THEN a := 0; b := HS
@@ -312,7 +312,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     END
   END Set;
 
-  PROCEDURE Pos*(VAR r: Rider): INTEGER;
+  PROCEDURE Pos*(VAR r: Rider): LONGINT;
   BEGIN RETURN r.apos * SS + r.bpos - HS
   END Pos;
 
@@ -320,7 +320,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   BEGIN RETURN r.file
   END Base;
 
-  PROCEDURE ReadByte*(VAR r: Rider; VAR x: BYTE);
+  PROCEDURE ReadByte*(VAR r: Rider; VAR x: SYSTEM.BYTE);
     VAR buf: Buffer;
   BEGIN
     IF r.apos # r.buf.apos THEN r.buf := GetBuf(r.file, r.apos) END ;
@@ -337,8 +337,8 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     END
   END ReadByte;
 
-  PROCEDURE ReadBytes*(VAR r: Rider; VAR x: ARRAY OF BYTE; n: INTEGER);
-    VAR i: INTEGER;
+  PROCEDURE ReadBytes*(VAR r: Rider; VAR x: ARRAY OF SYSTEM.BYTE; n: LONGINT);
+    VAR i: LONGINT;
   BEGIN i := 0;  (*this implementation is to be improved*)
     WHILE i < n DO ReadByte(r, x[i]); INC(i) END
   END ReadBytes;
@@ -347,7 +347,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     VAR buf: Buffer;  (*same as ReadByte*)
   BEGIN
     IF r.apos # r.buf.apos THEN r.buf := GetBuf(r.file, r.apos) END ;
-    IF r.bpos < r.buf.lim THEN ch := CHR(r.buf.data[r.bpos]); INC(r.bpos)
+    IF r.bpos < r.buf.lim THEN ch := SYSTEM.VAL(CHAR, r.buf.data[r.bpos]); INC(r.bpos)
     ELSIF r.apos < r.file.aleng THEN
       INC(r.apos); buf := Buf(r.file, r.apos);
       IF buf = NIL THEN
@@ -355,29 +355,30 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         ReadBuf(r.file, r.buf, r.apos)
       ELSE r.buf := buf
       END ;
-      ch := CHR(r.buf.data[0]); r.bpos := 1
+      ch := SYSTEM.VAL(CHAR, r.buf.data[0]); r.bpos := 1
     ELSE ch := 0X; r.eof := TRUE
     END
   END Read;
 
-  PROCEDURE ReadInt*(VAR R: Rider; VAR x: INTEGER);
-    VAR x0, x1, x2, x3: BYTE;
+  PROCEDURE ReadInt*(VAR R: Rider; VAR x: LONGINT);
+    VAR x0, x1, x2, x3: SYSTEM.BYTE;
   BEGIN ReadByte(R, x0); ReadByte(R, x1); ReadByte(R, x2); ReadByte(R, x3);
-    x := ((x3 * 100H + x2) * 100H + x1) * 100H + x0
+    x := ((ORD(x3) * 100H + ORD(x2)) * 100H
+        + ORD(x1)) * 100H + ORD(x0)
   END ReadInt;
 
   PROCEDURE ReadSet*(VAR R: Rider; VAR s: SET);
-    VAR n: INTEGER;
-  BEGIN ReadInt(R, SYSTEM.VAL(INTEGER, s))
+    VAR n: LONGINT;
+  BEGIN ReadInt(R, SYSTEM.VAL(LONGINT, s))
   END ReadSet;
 
   PROCEDURE ReadReal*(VAR R: Rider; VAR x: REAL);
-    VAR n: INTEGER;
-  BEGIN ReadInt(R, SYSTEM.VAL(INTEGER, x))
+    VAR n: LONGINT;
+  BEGIN ReadInt(R, SYSTEM.VAL(LONGINT, x))
   END ReadReal;
 
   PROCEDURE ReadString*(VAR R: Rider; VAR x: ARRAY OF CHAR);
-    VAR i: INTEGER; ch: CHAR;
+    VAR i: LONGINT; ch: CHAR;
   BEGIN i := 0; Read(R, ch);
     WHILE ch # 0X DO
       IF i < LEN(x)-1 THEN x[i] := ch; INC(i) END ;
@@ -386,23 +387,23 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     x[i] := 0X
   END ReadString;
 
-  PROCEDURE ReadNum*(VAR R: Rider; VAR x: INTEGER);
-    VAR n, y: INTEGER; b: BYTE;
-  BEGIN n := 32; y := 0; ReadByte(R, b);
-    WHILE b >= 80H DO y := ROR(y + b-80H, 7); DEC(n, 7); ReadByte(R, b) END ;
-    IF n <= 4 THEN x := ROR(y + b MOD 10H, 4) ELSE x := ASR(ROR(y + b, 7), n-7) END
+  PROCEDURE ReadNum*(VAR R: Rider; VAR x: LONGINT);
+    VAR n, y, k: LONGINT; b: SYSTEM.BYTE;
+  BEGIN n := 32; y := 0; ReadByte(R, b); k := ORD(b);
+    WHILE k >= 80H DO y := SYSTEM.ROT(y + k-80H, -7); DEC(n, 7); ReadByte(R, b); k := ORD(b) END ;
+    IF n <= 4 THEN x := SYSTEM.ROT(y + k MOD 10H, -4) ELSE x := ASH(SYSTEM.ROT(y + k, -7), -(n-7)) END
   END ReadNum;
         
   (*---------------------------Write---------------------------*)
 
   PROCEDURE NewExt(f: File);
-    VAR i, k: INTEGER; ext: Index;
+    VAR i, k: LONGINT; ext: Index;
   BEGIN k := (f.aleng - STS) DIV XS;
     NEW(ext); ext.adr := 0; ext.mod := TRUE; f.ext[k] := ext; i := XS;
     REPEAT DEC(i); ext.sec[i] := 0 UNTIL i = 0
   END NewExt;
 
-  PROCEDURE WriteByte*(VAR r: Rider; x: BYTE);
+  PROCEDURE WriteByte*(VAR r: Rider; x: SYSTEM.BYTE);
     VAR f: File; buf: Buffer;
   BEGIN
     IF r.apos # r.buf.apos THEN r.buf := GetBuf(r.file, r.apos); END ;
@@ -423,8 +424,8 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     r.buf.data[r.bpos] := x; INC(r.bpos); r.buf.mod := TRUE
   END WriteByte;
 
-  PROCEDURE WriteBytes*(VAR r: Rider; x: ARRAY OF BYTE; n: INTEGER);
-    VAR i: INTEGER;
+  PROCEDURE WriteBytes*(VAR r: Rider; x: ARRAY OF SYSTEM.BYTE; n: LONGINT);
+    VAR i: LONGINT;
   BEGIN i := 0; (*this implementation is to be improed*)
     WHILE i < n DO WriteByte(r, x[i]); INC(i) END
   END WriteBytes;
@@ -447,34 +448,34 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         r.bpos := 0
       END
     END ;
-    r.buf.data[r.bpos] := ORD(ch); INC(r.bpos); r.buf.mod := TRUE
+    r.buf.data[r.bpos] := ch; INC(r.bpos); r.buf.mod := TRUE
   END Write;
 
-  PROCEDURE WriteInt*(VAR R: Rider; x: INTEGER);
-  BEGIN WriteByte(R, x MOD 100H);
-    WriteByte(R, x DIV 100H MOD 100H);
-    WriteByte(R, x DIV 10000H MOD 100H);
-    WriteByte(R, x DIV 1000000H MOD 100H)
+  PROCEDURE WriteInt*(VAR R: Rider; x: LONGINT);
+  BEGIN WriteByte(R, CHR(x MOD 100H));
+    WriteByte(R, CHR(x DIV 100H MOD 100H));
+    WriteByte(R, CHR(x DIV 10000H MOD 100H));
+    WriteByte(R, CHR(x DIV 1000000H MOD 100H))
   END WriteInt;
 
   PROCEDURE WriteSet*(VAR R: Rider; s: SET);
-  BEGIN WriteInt(R, ORD(s))
+  BEGIN WriteInt(R, SYSTEM.VAL(LONGINT, s))
   END WriteSet;
 
   PROCEDURE WriteReal*(VAR R: Rider; x: REAL);
-  BEGIN  WriteInt(R, ORD(x))
+  BEGIN  WriteInt(R, SYSTEM.VAL(LONGINT, x))
   END WriteReal;
 
   PROCEDURE WriteString*(VAR R: Rider; x: ARRAY OF CHAR);
-    VAR i: INTEGER; ch: CHAR;
+    VAR i: LONGINT; ch: CHAR;
   BEGIN i := 0;
     REPEAT ch := x[i]; Write(R, ch); INC(i) UNTIL ch = 0X
   END WriteString;
 
-  PROCEDURE WriteNum*(VAR R: Rider; x: INTEGER);
+  PROCEDURE WriteNum*(VAR R: Rider; x: LONGINT);
   BEGIN
-    WHILE (x < -40H) OR (x >= 40H) DO WriteByte(R, x MOD 80H + 80H); x := ASR(x, 7) END ;
-    WriteByte(R, x MOD 80H)
+    WHILE (x < -40H) OR (x >= 40H) DO WriteByte(R, CHR(x MOD 80H + 80H)); x := ASH(x, -7) END ;
+    WriteByte(R, CHR(x MOD 80H))
   END WriteNum;
 
   (*---------------------------System use---------------------------*)
@@ -484,10 +485,10 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   END Init;
 
   PROCEDURE RestoreList*; (*after mark phase of garbage collection*)
-    VAR f, f0: INTEGER;
+    VAR f, f0: LONGINT;
 
-    PROCEDURE mark(f: INTEGER): INTEGER;
-      VAR m: INTEGER;
+    PROCEDURE mark(f: LONGINT): LONGINT;
+      VAR m: LONGINT;
     BEGIN
       IF f = 0 THEN m := -1 ELSE SYSTEM.GET(f-4, m) END ;
       RETURN m

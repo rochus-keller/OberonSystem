@@ -1,19 +1,19 @@
 MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
-  IMPORT SYSTEM;
+  IMPORT SYSTEM, SYS;
   CONST SectorLength* = 1024;
     timer = -64; spiData = -48; spiCtrl = -44;
     CARD0 = 1; SPIFAST = 4;
     FSoffset = 80000H; (*256MB in 512-byte blocks*)
     mapsize = 10000H; (*1K sectors, 64MB*)
 
-  TYPE Sector* = ARRAY SectorLength OF BYTE;
+  TYPE Sector* = ARRAY SectorLength OF SYSTEM.BYTE;
 
-  VAR allocated*, NofSectors*: INTEGER;
-    heapOrg*, heapLim*: INTEGER; 
-    stackOrg* ,  stackSize*, MemLim*: INTEGER;
-    clock: INTEGER;
-    list0, list1, list2, list3: INTEGER;  (*lists of free blocks of size n*256, 128, 64, 32 bytes*)
-    data: INTEGER; (*SPI data in*)
+  VAR allocated*, NofSectors*: LONGINT;
+    heapOrg*, heapLim*: LONGINT; 
+    stackOrg* ,  stackSize*, MemLim*: LONGINT;
+    clock: LONGINT;
+    list0, list1, list2, list3: LONGINT;  (*lists of free blocks of size n*256, 128, 64, 32 bytes*)
+    data: LONGINT; (*SPI data in*)
     sectorMap: ARRAY mapsize DIV 32 OF SET;
     
 (* ---------- New: heap allocation ----------*)
@@ -30,7 +30,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
         IF q0 # 0 THEN SYSTEM.PUT(q0+8, q2) ELSE list0 := q2 END
       ELSE (*reduce size*)
         done := TRUE; p := q1; q1 := q1 + len;
-        SYSTEM.PUT(q1, size-len); SYSTEM.PUT(q1+4, -1); SYSTEM.PUT(q1+8, q2);
+        SYSTEM.PUT(q1, size-len); SYSTEM.PUT(q1+4, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(q1+8, q2);
         IF q0 # 0 THEN SYSTEM.PUT(q0+8, q1) ELSE list0 := q1 END
       END
     END ;
@@ -41,7 +41,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     VAR q: LONGINT;
   BEGIN
     IF list1 # 0 THEN p := list1; SYSTEM.GET(list1+8, list1)
-    ELSE GetBlock(q, 256); SYSTEM.PUT(q+128, 128); SYSTEM.PUT(q+132, -1); SYSTEM.PUT(q+136, list1);
+    ELSE GetBlock(q, 256); SYSTEM.PUT(q+128, SYSTEM.VAL(LONGINT, 128)); SYSTEM.PUT(q+132, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(q+136, list1);
       list1 := q + 128; p := q
     END
   END GetBlock128;
@@ -50,7 +50,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     VAR q: LONGINT;
   BEGIN
     IF list2 # 0 THEN p := list2; SYSTEM.GET(list2+8, list2)
-    ELSE GetBlock128(q); SYSTEM.PUT(q+64, 64); SYSTEM.PUT(q+68, -1); SYSTEM.PUT(q+72, list2);
+    ELSE GetBlock128(q); SYSTEM.PUT(q+64, SYSTEM.VAL(LONGINT, 64)); SYSTEM.PUT(q+68, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(q+72, list2);
       list2 := q + 64; p := q
     END
   END GetBlock64;
@@ -59,7 +59,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     VAR q: LONGINT;
   BEGIN
     IF list3 # 0 THEN p := list3; SYSTEM.GET(list3+8, list3)
-    ELSE GetBlock64(q); SYSTEM.PUT(q+32, 32); SYSTEM.PUT(q+36, -1); SYSTEM.PUT(q+40, list3);
+    ELSE GetBlock64(q); SYSTEM.PUT(q+32, SYSTEM.VAL(LONGINT, 32)); SYSTEM.PUT(q+36, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(q+40, list3);
       list3 := q + 32; p := q
     END
   END GetBlock32;
@@ -75,7 +75,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END ;
     IF p = 0 THEN ptr := 0
     ELSE ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
-      WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
+      WHILE p < lim DO SYSTEM.PUT(p, SYSTEM.VAL(LONGINT, 0)); INC(p, 4) END
     END
   END New;
 
@@ -112,19 +112,19 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       size := p - q; DEC(allocated, size);  (*size of free block*)
       IF size > 0 THEN
         IF size MOD 64 # 0 THEN
-          SYSTEM.PUT(q, 32); SYSTEM.PUT(q+4, -1); SYSTEM.PUT(q+8, list3); list3 := q; INC(q, 32); DEC(size, 32)
+          SYSTEM.PUT(q, SYSTEM.VAL(LONGINT, 32)); SYSTEM.PUT(q+4, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(q+8, list3); list3 := q; INC(q, 32); DEC(size, 32)
         END ;
         IF size MOD 128 # 0 THEN
-          SYSTEM.PUT(q, 64); SYSTEM.PUT(q+4, -1); SYSTEM.PUT(q+8, list2); list2 := q; INC(q, 64); DEC(size, 64)
+          SYSTEM.PUT(q, SYSTEM.VAL(LONGINT, 64)); SYSTEM.PUT(q+4, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(q+8, list2); list2 := q; INC(q, 64); DEC(size, 64)
         END ;
         IF size MOD 256 # 0 THEN
-          SYSTEM.PUT(q, 128); SYSTEM.PUT(q+4, -1); SYSTEM.PUT(q+8,  list1); list1 := q; INC(q, 128); DEC(size, 128)
+          SYSTEM.PUT(q, SYSTEM.VAL(LONGINT, 128)); SYSTEM.PUT(q+4, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(q+8,  list1); list1 := q; INC(q, 128); DEC(size, 128)
         END ;
         IF size > 0 THEN
-          SYSTEM.PUT(q, size); SYSTEM.PUT(q+4, -1); SYSTEM.PUT(q+8, list0); list0 := q; INC(q, size)
+          SYSTEM.PUT(q, size); SYSTEM.PUT(q+4, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(q+8, list0); list0 := q; INC(q, size)
         END
       END ;
-      IF mark > 0 THEN SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); SYSTEM.PUT(p+4, 0); INC(p, size)
+      IF mark > 0 THEN SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); SYSTEM.PUT(p+4, SYSTEM.VAL(LONGINT, 0)); INC(p, size)
       ELSE (*free*) SYSTEM.GET(p, size); INC(p, size)
       END
     UNTIL p >= heapLim
@@ -132,139 +132,140 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
 (* ---------- Disk storage management ----------*)
 
-  PROCEDURE SPIIdle(n: INTEGER); (*send n FFs slowly with no card selected*)
-  BEGIN SYSTEM.PUT(spiCtrl, 0);
-    WHILE n > 0 DO DEC(n); SYSTEM.PUT(spiData, -1);
+  PROCEDURE SPIIdle(n: LONGINT); (*send n FFs slowly with no card selected*)
+  BEGIN SYSTEM.PUT(spiCtrl, SYSTEM.VAL(LONGINT, 0));
+    WHILE n > 0 DO DEC(n); SYSTEM.PUT(spiData, SYSTEM.VAL(LONGINT, -1));
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
       SYSTEM.GET(spiData, data)
     END
   END SPIIdle;
 
-  PROCEDURE SPI(n: INTEGER); (*send&rcv byte slowly with card selected*)
-  BEGIN SYSTEM.PUT(spiCtrl, CARD0); SYSTEM.PUT(spiData, n);
+  PROCEDURE SPI(n: LONGINT); (*send&rcv byte slowly with card selected*)
+  BEGIN SYSTEM.PUT(spiCtrl, SYSTEM.VAL(LONGINT, CARD0)); SYSTEM.PUT(spiData, n);
     REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
     SYSTEM.GET(spiData, data)
   END SPI;
 
-  PROCEDURE SPICmd(n, arg: INTEGER);
-    VAR i, crc: INTEGER;
+  PROCEDURE SPICmd(n, arg: LONGINT);
+    VAR i, crc: LONGINT;
   BEGIN (*send cmd*)
     REPEAT SPIIdle(1) UNTIL data = 255; (*flush while unselected*)
     REPEAT SPI(255) UNTIL data = 255; (*flush while selected*)
     IF n = 8 THEN crc := 135 ELSIF n = 0 THEN crc := 149 ELSE crc := 255 END;
     SPI(n MOD 64 + 64); (*send command*)
-    FOR i := 24 TO 0 BY -8 DO SPI(ROR(arg, i)) END; (*send arg*)
+    FOR i := 24 TO 0 BY -8 DO SPI(SYSTEM.ROT(arg, -i)) END; (*send arg*)
     SPI(crc); i := 32;
     REPEAT SPI(255); DEC(i) UNTIL (data < 80H) OR (i = 0)
   END SPICmd;
 
-  PROCEDURE SDShift(VAR n: INTEGER);
-    VAR data: INTEGER;
+  PROCEDURE SDShift(VAR n: LONGINT);
+    VAR data: LONGINT;
   BEGIN SPICmd(58, 0);  (*CMD58 get card capacity bit*)
     SYSTEM.GET(spiData, data); SPI(-1);
     IF (data # 0) OR ~SYSTEM.BIT(spiData, 6) THEN n := n * 512 END ;  (*non-SDHC card*)
     SPI(-1); SPI(-1); SPIIdle(1)  (*flush response*)
   END SDShift;
 
-  PROCEDURE ReadSD(src, dst: INTEGER);
-    VAR i: INTEGER;
-  BEGIN SDShift(src); SPICmd(17, src); ASSERT(data = 0); (*CMD17 read one block*)
+  PROCEDURE ReadSD(src, dst: LONGINT);
+    VAR i: LONGINT;
+  BEGIN SDShift(src); SPICmd(17, src); SYS.ASSERT(data = 0); (*CMD17 read one block*)
     i := 0; (*wait for start data marker*)
     REPEAT SPI(-1); INC(i) UNTIL data = 254;
-    SYSTEM.PUT(spiCtrl, SPIFAST + CARD0);
+    SYSTEM.PUT(spiCtrl, SYSTEM.VAL(LONGINT, SPIFAST + CARD0));
     FOR i := 0 TO 508 BY 4 DO
-      SYSTEM.PUT(spiData, -1);
+      SYSTEM.PUT(spiData, SYSTEM.VAL(LONGINT, -1));
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
       SYSTEM.GET(spiData, data); SYSTEM.PUT(dst, data); INC(dst, 4)
     END;
     SPI(255); SPI(255); SPIIdle(1) (*may be a checksum; deselect card*)
   END ReadSD;
 
-  PROCEDURE WriteSD(dst, src: INTEGER);
-    VAR i, n: INTEGER; x: BYTE;
-  BEGIN SDShift(dst); SPICmd(24, dst); ASSERT(data = 0); (*CMD24 write one block*)
+  PROCEDURE WriteSD(dst, src: LONGINT);
+    VAR i, n: LONGINT; x: SYSTEM.BYTE;
+  BEGIN SDShift(dst); SPICmd(24, dst); SYS.ASSERT(data = 0); (*CMD24 write one block*)
     SPI(254); (*write start data marker*)
-    SYSTEM.PUT(spiCtrl, SPIFAST + CARD0);
+    SYSTEM.PUT(spiCtrl, SYSTEM.VAL(LONGINT, SPIFAST + CARD0));
     FOR i := 0 TO 508 BY 4 DO
       SYSTEM.GET(src, n); INC(src, 4); SYSTEM.PUT(spiData, n);
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0)
     END;
     SPI(255); SPI(255); (*dummy checksum*) i := 0;
     REPEAT SPI(-1); INC(i); UNTIL (data MOD 32 = 5) OR (i = 10000);
-    ASSERT(data MOD 32 = 5); SPIIdle(1) (*deselect card*)
+    SYS.ASSERT(data MOD 32 = 5); SPIIdle(1) (*deselect card*)
   END WriteSD;
 
   PROCEDURE InitSecMap*;
-    VAR i: INTEGER;
+    VAR i: LONGINT;
   BEGIN NofSectors := 0; sectorMap[0] := {0 .. 31}; sectorMap[1] := {0 .. 31};
     FOR i := 2 TO mapsize DIV 32 - 1 DO sectorMap[i] := {} END
   END InitSecMap;
 
-  PROCEDURE MarkSector*(sec: INTEGER);
-  BEGIN sec := sec DIV 29; ASSERT(SYSTEM.H(0) = 0);
+  PROCEDURE MarkSector*(sec: LONGINT);
+  BEGIN sec := sec DIV 29; SYS.ASSERT(SYS.H(0) = 0);
     INCL(sectorMap[sec DIV 32], sec MOD 32); INC(NofSectors)
   END MarkSector;
 
-  PROCEDURE FreeSector*(sec: INTEGER);
-  BEGIN sec := sec DIV 29; ASSERT(SYSTEM.H(0) = 0);
+  PROCEDURE FreeSector*(sec: LONGINT);
+  BEGIN sec := sec DIV 29; SYS.ASSERT(SYS.H(0) = 0);
     EXCL(sectorMap[sec DIV 32], sec MOD 32); DEC(NofSectors)
   END FreeSector;
 
-  PROCEDURE AllocSector*(hint: INTEGER; VAR sec: INTEGER);
-    VAR s: INTEGER;
+  PROCEDURE AllocSector*(hint: LONGINT; VAR sec: LONGINT);
+    VAR s: LONGINT;
   BEGIN (*find free sector, starting after hint*)
-    hint := hint DIV 29; ASSERT(SYSTEM.H(0) = 0); s := hint;
+    hint := hint DIV 29; SYS.ASSERT(SYS.H(0) = 0); s := hint;
     REPEAT INC(s);
       IF s = mapsize THEN s := 1 END ;
     UNTIL ~(s MOD 32 IN sectorMap[s DIV 32]);
     INCL(sectorMap[s DIV 32], s MOD 32); INC(NofSectors); sec := s * 29
   END AllocSector;
 
-  PROCEDURE GetSector*(src: INTEGER; VAR dst: Sector);
-  BEGIN src := src DIV 29; ASSERT(SYSTEM.H(0) = 0);
+  PROCEDURE GetSector*(src: LONGINT; VAR dst: ARRAY OF SYSTEM.BYTE);
+  BEGIN src := src DIV 29; SYS.ASSERT(SYS.H(0) = 0);
     src := src * 2 + FSoffset;
     ReadSD(src, SYSTEM.ADR(dst)); ReadSD(src+1, SYSTEM.ADR(dst)+512) 
   END GetSector;
   
-  PROCEDURE PutSector*(dst: INTEGER; VAR src: Sector);
-  BEGIN dst := dst DIV 29; ASSERT(SYSTEM.H(0) =  0);
+  PROCEDURE PutSector*(dst: LONGINT; VAR src: ARRAY OF SYSTEM.BYTE);
+  BEGIN dst := dst DIV 29; SYS.ASSERT(SYS.H(0) =  0);
     dst := dst * 2 + FSoffset;
     WriteSD(dst, SYSTEM.ADR(src)); WriteSD(dst+1, SYSTEM.ADR(src)+512)
   END PutSector;
 
 (*-------- Miscellaneous procedures----------*)
 
-  PROCEDURE Time*(): INTEGER;
-    VAR t: INTEGER;
+  PROCEDURE Time*(): LONGINT;
+    VAR t: LONGINT;
   BEGIN SYSTEM.GET(timer, t); RETURN t
   END Time;
 
-  PROCEDURE Clock*(): INTEGER;
+  PROCEDURE Clock*(): LONGINT;
   BEGIN RETURN clock
   END Clock;
 
-  PROCEDURE SetClock*(dt: INTEGER);
+  PROCEDURE SetClock*(dt: LONGINT);
   BEGIN clock := dt
   END SetClock;
 
-  PROCEDURE Install*(Padr, at: INTEGER);
+  PROCEDURE Install*(Padr, at: LONGINT);
   BEGIN SYSTEM.PUT(at, 0E7000000H + (Padr - at) DIV 4 -1)
   END Install;
 
-  PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
-    VAR u, v, w: INTEGER;
-  BEGIN u := SYSTEM.REG(15); SYSTEM.GET(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
+  PROCEDURE Trap(VAR a: LONGINT; b: LONGINT);
+    VAR u, v, w: LONGINT;
+  BEGIN u := SYS.REG(15); SYSTEM.GET(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
     IF w = 0 THEN New(a, b)
-    ELSE (*stop*) LED(w + 192); REPEAT UNTIL FALSE
+    ELSE (*stop*) SYS.LED(w + 192); REPEAT UNTIL FALSE
     END
   END Trap;
 
   PROCEDURE Init*;
-  BEGIN Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap*)
+    VAR trap: PROCEDURE (VAR a: LONGINT; b: LONGINT);
+  BEGIN trap := Trap; Install(SYSTEM.VAL(LONGINT, trap), 20H);  (*install temporary trap*)
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H; heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
-    SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
+    SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, SYSTEM.VAL(LONGINT, -1)); SYSTEM.PUT(list0+8, SYSTEM.VAL(LONGINT, 0));
     allocated := 0; clock := 0; InitSecMap
   END Init;
 

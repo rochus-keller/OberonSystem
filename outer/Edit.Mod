@@ -6,9 +6,9 @@ MODULE Edit; (*JG 2.11.90 / NW 28.11.2015*)
 
   VAR W: Texts.Writer;
     time: LONGINT;
-    M: INTEGER;
+    M: LONGINT;
     pat: ARRAY maxlen OF CHAR;
-    d: ARRAY 256 OF INTEGER;
+    d: ARRAY 256 OF LONGINT;
 
   PROCEDURE Max(i, j: LONGINT): LONGINT;
     VAR m: LONGINT;
@@ -20,7 +20,7 @@ MODULE Edit; (*JG 2.11.90 / NW 28.11.2015*)
     VAR T: Texts.Text;
     S: Texts.Scanner;
     V: Viewers.Viewer;
-    X, Y: INTEGER;
+    X, Y: LONGINT;
     beg, end, time: LONGINT;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF (S.class = Texts.Char) & (S.c = "^") OR (S.line # 0) THEN
@@ -45,7 +45,7 @@ MODULE Edit; (*JG 2.11.90 / NW 28.11.2015*)
       beg, end, time, len: LONGINT;
 
     PROCEDURE Backup (VAR name: ARRAY OF CHAR);
-      VAR res, i: INTEGER; bak: ARRAY 32 OF CHAR;
+      VAR res, i: LONGINT; bak: ARRAY 32 OF CHAR;
     BEGIN i := 0;
       WHILE name[i] # 0X DO bak[i] := name[i]; INC(i) END;
       bak[i] := "."; bak[i+1] := "B"; bak[i+2] := "a"; bak[i+3] := "k"; bak[i+4] := 0X;
@@ -75,7 +75,7 @@ MODULE Edit; (*JG 2.11.90 / NW 28.11.2015*)
       F: TextFrames.Frame;
       v: Viewers.Viewer;
       beg, end, time: LONGINT;
-      fnt: Fonts.Font; col, voff: INTEGER;
+      fnt: Fonts.Font; col, voff: LONGINT;
   BEGIN Oberon.GetSelection(T, beg, end, time);
     IF time >= 0 THEN
       v := Oberon.FocusViewer;
@@ -102,7 +102,7 @@ MODULE Edit; (*JG 2.11.90 / NW 28.11.2015*)
   PROCEDURE ChangeColor*;
     VAR S: Texts.Scanner;
       T: Texts.Text;
-      col: INTEGER;
+      col: LONGINT;
       beg, end, time: LONGINT;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF S.class = Texts.Int THEN
@@ -114,7 +114,7 @@ MODULE Edit; (*JG 2.11.90 / NW 28.11.2015*)
   PROCEDURE ChangeOffset*;
     VAR S: Texts.Scanner;
       T: Texts.Text;
-      voff: INTEGER; ch: CHAR;
+      voff: LONGINT; ch: CHAR;
       beg, end, time: LONGINT;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF S.class = Texts.Int THEN
@@ -128,11 +128,11 @@ MODULE Edit; (*JG 2.11.90 / NW 28.11.2015*)
       V: Viewers.Viewer;
       R: Texts.Reader;
       T: Texts.Text;
-      pos, beg, end, prevTime, len: LONGINT; n, i, j: INTEGER;
+      pos, beg, end, prevTime, len: LONGINT; n, i, j: LONGINT;
       buf: ARRAY 32 OF CHAR;
 
-    PROCEDURE Forward(n: INTEGER; VAR R: Texts.Reader; VAR buf: ARRAY OF CHAR);
-      VAR m: INTEGER; j: INTEGER;
+    PROCEDURE Forward(n: LONGINT; VAR R: Texts.Reader; VAR buf: ARRAY OF CHAR);
+      VAR m: LONGINT; j: LONGINT;
     BEGIN m := M - n; j := 0;
       WHILE j # m DO buf[j] := buf[n + j]; INC(j) END;
       WHILE j # M DO Texts.Read(R, buf[j]); INC(j) END

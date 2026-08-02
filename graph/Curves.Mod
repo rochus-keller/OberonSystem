@@ -1,23 +1,23 @@
 MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
-  IMPORT Display, Files, Oberon, Graphics, GraphicFrames;
+  IMPORT SYSTEM, Display, Files, Oberon, Graphics, GraphicFrames;
 
   TYPE
     Curve* = POINTER TO CurveDesc;
 
     CurveDesc* = RECORD (Graphics.ObjectDesc)
-        kind*, lw*: INTEGER
+        kind*, lw*: LONGINT
       END ;
 
   (*kind: 0 = up-line, 1 = down-line, 2 = circle, 3 = ellipse*)
 
   VAR method*: Graphics.Method;
 
-  PROCEDURE Dot(f: GraphicFrames.Frame; col, x, y: INTEGER);
+  PROCEDURE Dot(f: GraphicFrames.Frame; col, x, y: LONGINT);
   BEGIN
     IF (x >= f.X) & (x+7 < f.X1) & (y >= f.Y) & (x+7 < f.Y1) THEN Display.Dot(col, x, y, Display.replace) END
   END Dot;
 
-  PROCEDURE mark(f: GraphicFrames.Frame; col, x, y: INTEGER);
+  PROCEDURE mark(f: GraphicFrames.Frame; col, x, y: LONGINT);
   BEGIN DEC(x, 3); DEC(y, 3);
     IF (x >= f.X) & (x+7 < f.X1) & (y >= f.Y) & (y+7 < f.Y1) THEN
       IF col = Display.black THEN Display.ReplConst(Display.black, x, y, 7, 7, Display.replace)
@@ -26,7 +26,7 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
     END
   END mark;
 
-  PROCEDURE line(f: GraphicFrames.Frame; col: INTEGER; x, y, w, h, d: LONGINT);
+  PROCEDURE line(f: GraphicFrames.Frame; col: LONGINT; x, y, w, h, d: LONGINT);
     VAR x1, y1, u: LONGINT;
   BEGIN
     IF h < w THEN
@@ -45,7 +45,7 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
     END
   END line;
 
-  PROCEDURE circle(f: GraphicFrames.Frame; col: INTEGER; x0, y0, r: LONGINT);
+  PROCEDURE circle(f: GraphicFrames.Frame; col: LONGINT; x0, y0, r: LONGINT);
     VAR x, y, u: LONGINT;
   BEGIN u := 1 - r; x := r; y := 0;
     WHILE y <= x DO
@@ -62,7 +62,7 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
     END
   END circle;
 
-  PROCEDURE ellipse(f: GraphicFrames.Frame; col: INTEGER; x0, y0, a, b: LONGINT);
+  PROCEDURE ellipse(f: GraphicFrames.Frame; col: LONGINT; x0, y0, a, b: LONGINT);
     VAR x, y, y1, aa, bb, d, g, h: LONGINT;
   BEGIN aa := a*a; bb := b*b;
     h := (aa DIV 4) - b*aa + bb; g := (9*aa DIV 4) - 3*b*aa + bb; x := 0; y := b;
@@ -98,11 +98,11 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
   END Copy;
 
   PROCEDURE Draw(obj: Graphics.Object; VAR M: Graphics.Msg);
-    VAR x, y, w, h, col: INTEGER; f: GraphicFrames.Frame;
+    VAR x, y, w, h, col: LONGINT; f: GraphicFrames.Frame;
   BEGIN
-    CASE M OF  GraphicFrames.DrawMsg:
+    WITH M: GraphicFrames.DrawMsg DO
       x := obj.x + M.x; y := obj.y + M.y; w := obj.w; h := obj.h; f := M.f;
-      IF M.col = Display.black THEN col := obj.col ELSE col := M.col END ;
+      IF M.col = Display.black THEN col := ORD(obj.col) ELSE col := M.col END ;
       IF (x < f.X1) & (f.X <= x+w) & (y < f.Y1) & (f.Y <= y+h) THEN
         IF obj(Curve).kind = 0 THEN  (*up-line*)
           IF M.mode = 0 THEN
@@ -143,8 +143,8 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
     END
   END Draw;
 
-  PROCEDURE Selectable(obj: Graphics.Object; x, y: INTEGER): BOOLEAN;
-    VAR xm, y0, w, h: INTEGER; res: BOOLEAN;
+  PROCEDURE Selectable(obj: Graphics.Object; x, y: LONGINT): BOOLEAN;
+    VAR xm, y0, w, h: LONGINT; res: BOOLEAN;
   BEGIN
     IF obj(Curve).kind <= 1 THEN  (*line*)
       w := obj.w; h := obj.h;
@@ -159,29 +159,29 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
 
   PROCEDURE Change(obj: Graphics.Object; VAR M: Graphics.Msg);
   BEGIN
-    IF M IS Graphics.ColorMsg THEN obj.col := M(Graphics.ColorMsg).col END
+    IF M IS Graphics.ColorMsg THEN obj.col := CHR(M(Graphics.ColorMsg).col) END
   END Change;
 
   PROCEDURE Read(obj: Graphics.Object; VAR R: Files.Rider; VAR C: Graphics.Context);
-    VAR len: BYTE;
-  BEGIN Files.ReadByte(R, len); Files.ReadByte(R, len); obj(Curve).kind := len;
-    Files.ReadByte(R, len); obj(Curve).lw := len
+    VAR len: SYSTEM.BYTE;
+  BEGIN Files.ReadByte(R, len); Files.ReadByte(R, len); obj(Curve).kind := ORD(len);
+    Files.ReadByte(R, len); obj(Curve).lw := ORD(len)
   END Read;
 
-  PROCEDURE Write(obj: Graphics.Object; cno: INTEGER; VAR W: Files.Rider; VAR C: Graphics.Context);
+  PROCEDURE Write(obj: Graphics.Object; cno: LONGINT; VAR W: Files.Rider; VAR C: Graphics.Context);
   BEGIN Graphics.WriteObj(W, cno, obj);
-    Files.WriteByte(W, 2); Files.WriteByte(W, obj(Curve).kind); Files.WriteByte(W, obj(Curve).lw)
+    Files.WriteByte(W, 2); Files.WriteByte(W, CHR(obj(Curve).kind)); Files.WriteByte(W, CHR(obj(Curve).lw))
   END Write;
 
   PROCEDURE MakeLine*;  (*command*)
-    VAR x0, x1, y0, y1: INTEGER;
+    VAR x0, x1, y0, y1: LONGINT;
       c: Curve;
       G: GraphicFrames.Frame;
   BEGIN G := GraphicFrames.Focus();
     IF (G # NIL) & (G.mark.next # NIL) THEN
       GraphicFrames.Deselect(G);
       x0 := G.mark.x; y0 := G.mark.y; x1 := G.mark.next.x; y1 := G.mark.next.y;
-      NEW(c); c.col := Oberon.CurCol;
+      NEW(c); c.col := CHR(Oberon.CurCol);
       c.w := ABS(x1-x0); c.h := ABS(y1-y0); c.lw := Graphics.width;
       IF x0 <= x1 THEN c.x := x0;
         IF y0 <= y1 THEN c.kind := 0; c.y := y0 ELSE c.kind := 1; c.y := y1 END
@@ -195,7 +195,7 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
   END MakeLine;
 
   PROCEDURE MakeCircle*;  (*command*)
-    VAR x0, y0, r: INTEGER;
+    VAR x0, y0, r: LONGINT;
       c: Curve;
       G: GraphicFrames.Frame;
   BEGIN G := GraphicFrames.Focus();
@@ -204,7 +204,7 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
       x0 := G.mark.x; y0 := G.mark.y; r := ABS(G.mark.next.x-x0);
       IF r > 4 THEN
         NEW(c); c.x := x0 - r - G.x; c.y := y0 - r - G.y; c.w := 2*r+1; c.h := c.w;
-        c.kind := 2; c.col := Oberon.CurCol;
+        c.kind := 2; c.col := CHR(Oberon.CurCol);
         c.lw := Graphics.width; c.do := method;
         Graphics.Add(G.graph, c);
         GraphicFrames.Defocus(G); GraphicFrames.DrawObj(G, c)
@@ -213,7 +213,7 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
   END MakeCircle;
 
   PROCEDURE MakeEllipse*;  (*command*)
-    VAR x0, y0, a, b: INTEGER;
+    VAR x0, y0, a, b: LONGINT;
       c: Curve;
       G: GraphicFrames.Frame;
   BEGIN G := GraphicFrames.Focus();
@@ -223,7 +223,7 @@ MODULE Curves;  (*NW 8.11.90 / 18.4.2013*)
       a := ABS(G.mark.next.x-x0); b := ABS(G.mark.next.next.y - y0);
       IF (a > 4) & (b > 4) THEN
         NEW(c); c.x := x0 - a - G.x; c.y := y0 - b - G.y; c.w := 2*a+1; c.h := 2*b+1;
-        c.kind := 3; c.col := Oberon.CurCol;
+        c.kind := 3; c.col := CHR(Oberon.CurCol);
         c.lw := Graphics.width; c.do := method;
         Graphics.Add(G.graph, c);
         GraphicFrames.Defocus(G); GraphicFrames.DrawObj(G, c)

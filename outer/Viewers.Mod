@@ -5,24 +5,24 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     inf = 65535;
 
   TYPE Viewer* = POINTER TO ViewerDesc;
-    ViewerDesc* = RECORD (Display.FrameDesc) state*: INTEGER END;
+    ViewerDesc* = RECORD (Display.FrameDesc) state*: LONGINT END;
 
     (*state > 1: displayed; state = 1: filler; state = 0: closed; state < 0: suspended*)
 
     ViewerMsg* = RECORD (Display.FrameMsg)
-        id*: INTEGER;
-        X*, Y*, W*, H*: INTEGER;
-        state*: INTEGER
+        id*: LONGINT;
+        X*, Y*, W*, H*: LONGINT;
+        state*: LONGINT
       END;
 
     Track = POINTER TO TrackDesc;
     TrackDesc = RECORD (ViewerDesc) under: Display.Frame END;
 
-  VAR curW*, minH*, DH: INTEGER;
+  VAR curW*, minH*, DH: LONGINT;
     FillerTrack: Track; FillerViewer,
     backup: Viewer; (*last closed viewer*)
 
-  PROCEDURE Open* (V: Viewer; X, Y: INTEGER);
+  PROCEDURE Open* (V: Viewer; X, Y: LONGINT);
     VAR T, u, v: Display.Frame; M: ViewerMsg;
   BEGIN
     IF (V.state = 0) & (X < inf) THEN
@@ -45,7 +45,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     END
   END Open;
 
-  PROCEDURE Change* (V: Viewer; Y: INTEGER);
+  PROCEDURE Change* (V: Viewer; Y: LONGINT);
     VAR v: Display.Frame; M: ViewerMsg;
   BEGIN
     IF V.state > 1 THEN
@@ -98,7 +98,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
   BEGIN V := backup
   END Recall;
 
-  PROCEDURE This* (X, Y: INTEGER): Viewer;
+  PROCEDURE This* (X, Y: LONGINT): Viewer;
     VAR T, V: Display.Frame;
   BEGIN
     IF (X < inf) & (Y < DH) THEN
@@ -115,7 +115,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
   BEGIN RETURN V.next(Viewer)
   END Next;
 
-  PROCEDURE Locate* (X, H: INTEGER; VAR fil, bot, alt, max: Display.Frame);
+  PROCEDURE Locate* (X, H: LONGINT; VAR fil, bot, alt, max: Display.Frame);
     VAR T, V: Display.Frame;
   BEGIN
     IF X < inf THEN
@@ -138,7 +138,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     END
   END Locate;
 
-  PROCEDURE InitTrack* (W, H: INTEGER; Filler: Viewer);
+  PROCEDURE InitTrack* (W, H: LONGINT; Filler: Viewer);
     VAR S: Display.Frame; T: Track;
   BEGIN
     IF Filler.state = 0 THEN
@@ -153,7 +153,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     END
   END InitTrack;
 
-  PROCEDURE OpenTrack* (X, W: INTEGER; Filler: Viewer);
+  PROCEDURE OpenTrack* (X, W: LONGINT; Filler: Viewer);
     VAR newT: Track; S, T, t, v: Display.Frame; M: ViewerMsg; v0: Viewer;
   BEGIN
     IF (X < inf) & (Filler.state = 0) THEN
@@ -173,7 +173,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     END
   END OpenTrack;
 
-  PROCEDURE CloseTrack* (X: INTEGER);
+  PROCEDURE CloseTrack* (X: LONGINT);
     VAR T, V: Display.Frame; M: ViewerMsg;
   BEGIN
     IF X < inf THEN

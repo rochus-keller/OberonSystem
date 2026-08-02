@@ -1,5 +1,5 @@
 MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
-  IMPORT SYSTEM, Files;
+  IMPORT SYSTEM, SYS, Files;
   CONST versionkey = 1X; MT = 12; DescSize = 80;
 
   TYPE Module* = POINTER TO ModDesc;
@@ -9,17 +9,17 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
     ModDesc* = RECORD
         name*: ModuleName;
         next*: Module;
-        key*, num*, size*, refcnt*: INTEGER;
-        data*, code*, imp*, cmd*, ent*, ptr*, unused: INTEGER  (*addresses*)
+        key*, num*, size*, refcnt*: LONGINT;
+        data*, code*, imp*, cmd*, ent*, ptr*, unused: LONGINT  (*addresses*)
       END ;
 
   VAR root*, M: Module;
-    MTOrg*, AllocPtr*, res*: INTEGER;
+    MTOrg*, AllocPtr*, res*: LONGINT;
     importing*, imported*: ModuleName;
-    limit: INTEGER;
+    limit: LONGINT;
 
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
-    VAR i: INTEGER;
+    VAR i: LONGINT;
       filename: ModuleName;
   BEGIN i := 0;
     WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
@@ -27,12 +27,12 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
     RETURN Files.Old(filename)
   END ThisFile;
 
-  PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
-  BEGIN res := n; importing := name
+  PROCEDURE error(n: LONGINT; name: ARRAY OF CHAR);
+  BEGIN res := n; COPY(name, importing)
   END error;
 
   PROCEDURE Check(s: ARRAY OF CHAR);
-    VAR i: INTEGER; ch: CHAR;
+    VAR i: LONGINT; ch: CHAR;
   BEGIN ch := s[0]; res := 1; i := 1;
     IF (ch >= "A") & (ch <= "Z") OR (ch >= "a") & (ch <= "z") THEN
       REPEAT ch := s[i]; INC(i)
@@ -47,12 +47,12 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
     VAR mod, impmod: Module;
-      i, n, key, impkey, mno, nofimps, size: INTEGER;
-      p, u, v, w: INTEGER;  (*addresses*)
+      i, n, key, impkey, mno, nofimps, size: LONGINT;
+      p, u, v, w: LONGINT;  (*addresses*)
       ch: CHAR;
       body: Command;
-      fixorgP, fixorgD, fixorgT: INTEGER;
-      disp, adr, inst, pno, vno, dest, offset: INTEGER;
+      fixorgP, fixorgD, fixorgT: LONGINT;
+      disp, adr, inst, pno, vno, dest, offset: LONGINT;
       name1, impname: ModuleName;
       F: Files.File; R: Files.Rider;
       import: ARRAY 16 OF Module;
@@ -90,18 +90,18 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
             mod.next := root; root := mod
           ELSE error(7, name1)
           END
-        ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
+        ELSE (*fill hole*) p := SYSTEM.VAL(LONGINT, mod)
         END
       END ; 
       IF res = 0 THEN (*read file*)
         INC(p, DescSize); (*allocate descriptor*)
-        mod.name := name; mod.key := key; mod.refcnt := 0;
+        COPY(name, mod.name); mod.key := key; mod.refcnt := 0;
         mod.data := p;  (*data*)
         SYSTEM.PUT(mod.num * 4 + MTOrg, p);  (*module table entry*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;  (*type descriptors*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO SYSTEM.PUT(p, 0); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
+        WHILE n > 0 DO SYSTEM.PUT(p, SYSTEM.VAL(LONGINT, 0)); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
         mod.code := p;  (*program*)
@@ -125,7 +125,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
         mod.ptr := p;  (*pointer references*)
         Files.ReadInt(R, w);
         WHILE w >= 0 DO SYSTEM.PUT(p, mod.data + w); INC(p, 4); Files.ReadInt(R, w) END ;
-        SYSTEM.PUT(p, 0); INC(p, 4);
+        SYSTEM.PUT(p, SYSTEM.VAL(LONGINT, 0)); INC(p, 4);
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT);
         Files.ReadInt(R, w); body := SYSTEM.VAL(Command, mod.code + w);
         Files.Read(R, ch);
@@ -178,7 +178,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
           SYSTEM.PUT(adr, inst); adr := adr - disp*4
         END ;
         body   (*initialize module*)
-      ELSIF res = 3 THEN importing := name;
+      ELSIF res = 3 THEN COPY(name, importing);
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END
       END 
     END ;
@@ -186,7 +186,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   END Load;
 
   PROCEDURE ThisCommand*(mod: Module; name: ARRAY OF CHAR): Command;
-    VAR k, adr, w: INTEGER; ch: CHAR;
+    VAR k, adr, w: LONGINT; ch: CHAR;
       s: ARRAY 32 OF CHAR;
   BEGIN res := 5; w := 0;
     IF mod # NIL THEN
@@ -198,12 +198,12 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
         SYSTEM.GET(adr, k); INC(adr, 4);
         IF s = name THEN res := 0; w := mod.code + k ELSE SYSTEM.GET(adr, ch) END
       END
-    END
+    END;
     RETURN SYSTEM.VAL(Command, w)
   END ThisCommand;
 
   PROCEDURE Free*(name: ARRAY OF CHAR);
-    VAR mod, imp: Module; p, q: INTEGER;
+    VAR mod, imp: Module; p, q: LONGINT;
   BEGIN mod := root; res := 0;
     WHILE (mod # NIL) & (mod.name # name) DO mod := mod.next END ;
     IF mod # NIL THEN
@@ -216,10 +216,10 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   END Free;
 
   PROCEDURE Init*;
-  BEGIN Files.Init; MTOrg := SYSTEM.REG(MT);
+  BEGIN Files.Init; MTOrg := SYS.REG(MT);
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H)
   END Init;
 
 BEGIN Init; Load("Oberon", M);
-    LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
+    SYS.LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
 END Modules.

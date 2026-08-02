@@ -7,14 +7,14 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   TYPE Line = POINTER TO LineDesc;
     LineDesc = RECORD
       len: LONGINT;
-      wid: INTEGER;
+      wid: LONGINT;
       eot: BOOLEAN;
       next: Line
     END;
 
     Location* = RECORD
       org*, pos*: LONGINT;
-      dx*, x*, y*: INTEGER;
+      dx*, x*, y*: LONGINT;
       lin: Line
     END;
 
@@ -23,10 +23,10 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
       (Display.FrameDesc)
       text*: Texts.Text;
       org*: LONGINT;
-      col*: INTEGER;
-      lsp*: INTEGER;
-      left*, right*, top*, bot*: INTEGER;
-      markH*: INTEGER;
+      col*: LONGINT;
+      lsp*: LONGINT;
+      left*, right*, top*, bot*: LONGINT;
+      markH*: LONGINT;
       time*: LONGINT;
       hasCar*, hasSel*, hasMark: BOOLEAN;
       carloc*: Location;
@@ -35,7 +35,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     END;
 
     UpdateMsg* = RECORD (Display.FrameMsg)
-      id*: INTEGER;
+      id*: LONGINT;
       text*: Texts.Text;
       beg*, end*: LONGINT
     END;
@@ -46,28 +46,28 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     END;
 
   VAR TBuf*, DelBuf: Texts.Buffer;
-    menuH*, barW*, left*, right*, top*, bot*, lsp*: INTEGER; (*standard sizes*)
-    asr, dsr, selH, markW, eolW: INTEGER;
+    menuH*, barW*, left*, right*, top*, bot*, lsp*: LONGINT; (*standard sizes*)
+    asr, dsr, selH, markW, eolW: LONGINT;
     nextCh: CHAR;
     ScrollMarker: Oberon.Marker;
     W, KW: Texts.Writer; (*keyboard writer*)
 
-  PROCEDURE Min (i, j: INTEGER): INTEGER;
+  PROCEDURE Min (i, j: LONGINT): LONGINT;
   BEGIN IF i < j THEN j := i END ;
     RETURN j
   END Min;
 
   (*------------------display support------------------------*)
 
-  PROCEDURE ReplConst (col: INTEGER; F: Frame; X, Y, W, H: INTEGER; mode: INTEGER);
+  PROCEDURE ReplConst (col: LONGINT; F: Frame; X, Y, W, H: LONGINT; mode: LONGINT);
   BEGIN
     IF X + W <= F.X + F.W THEN Display.ReplConst(col, X, Y, W, H, mode)
     ELSIF X < F.X + F.W THEN Display.ReplConst(col, X, Y, F.X + F.W - X, H, mode)
     END
   END ReplConst;
 
-  PROCEDURE FlipSM(X, Y: INTEGER);
-    VAR DW, DH, CL: INTEGER;
+  PROCEDURE FlipSM(X, Y: LONGINT);
+    VAR DW, DH, CL: LONGINT;
   BEGIN DW := Display.Width; DH := Display.Height; CL := DW;
     IF X < CL THEN
       IF X < 3 THEN X := 3 ELSIF X > DW - 4 THEN X := DW - 4 END
@@ -79,7 +79,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END FlipSM;
 
   PROCEDURE UpdateMark (F: Frame);  (*in scroll bar*)
-    VAR oldH: INTEGER;
+    VAR oldH: LONGINT;
   BEGIN oldH := F.markH; F.markH := F.org * F.H DIV (F.text.len + 1);
     IF F.hasMark & (F.left >= barW) & (F.markH # oldH) THEN
       Display.ReplConst(Display.white, F.X + 1, F.Y + F.H - 1 - oldH, markW, 1, Display.invert);
@@ -96,8 +96,8 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     END
   END SetChangeMark;
 
-  PROCEDURE Width (VAR R: Texts.Reader; len: LONGINT): INTEGER;
-    VAR patadr, pos: LONGINT; ox, dx, x, y, w, h: INTEGER;
+  PROCEDURE Width (VAR R: Texts.Reader; len: LONGINT): LONGINT;
+    VAR patadr, pos: LONGINT; ox, dx, x, y, w, h: LONGINT;
   BEGIN pos := 0; ox := 0;
     WHILE pos < len DO
       Fonts.GetPat(R.fnt, nextCh, dx, x, y, w, h, patadr);
@@ -107,8 +107,8 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END Width;
 
   PROCEDURE DisplayLine (F: Frame; L: Line;
-    VAR R: Texts.Reader; X, Y: INTEGER; len: LONGINT);
-    VAR patadr, NX,  dx, x, y, w, h: INTEGER;
+    VAR R: Texts.Reader; X, Y: LONGINT; len: LONGINT);
+    VAR patadr, NX,  dx, x, y, w, h: LONGINT;
   BEGIN NX := F.X + F.W;
     WHILE (nextCh # CR) & (R.fnt # NIL) DO
       Fonts.GetPat(R.fnt, nextCh, dx, x, y, w, h, patadr);
@@ -141,7 +141,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END Mark;
 
   PROCEDURE Restore* (F: Frame);
-    VAR R: Texts.Reader; L, l: Line; curY, botY: INTEGER;
+    VAR R: Texts.Reader; L, l: Line; curY, botY: LONGINT;
   BEGIN  Display.ReplConst(F.col, F.X, F.Y, F.W, F.H, Display.replace);
     IF F.left >= barW THEN
       Display.ReplConst(Display.white, F.X + barW - 1, F.Y, 1, F.H, Display.invert)
@@ -163,9 +163,9 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   BEGIN  F.trailer.next := F.trailer
   END Suspend;
 
-  PROCEDURE Extend* (F: Frame; newY: INTEGER);
+  PROCEDURE Extend* (F: Frame; newY: LONGINT);
     VAR R: Texts.Reader; L, l: Line;
-    org: LONGINT; curY, botY: INTEGER;
+    org: LONGINT; curY, botY: LONGINT;
   BEGIN Display.ReplConst(F.col, F.X, newY, F.W, F.Y - newY, Display.replace);
     IF F.left >= barW THEN
       Display.ReplConst(Display.white, F.X + barW - 1, newY, 1, F.Y - newY, Display.invert)
@@ -187,8 +187,8 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     F.markH := F.org * F.H DIV (F.text.len + 1)
   END Extend;
 
-  PROCEDURE Reduce* (F: Frame; newY: INTEGER);
-    VAR L: Line; curY, botY: INTEGER;
+  PROCEDURE Reduce* (F: Frame; newY: LONGINT);
+    VAR L: Line; curY, botY: LONGINT;
   BEGIN F.H := F.H + F.Y - newY; F.Y := newY;
     botY := F.Y + F.bot + dsr;
     L := F.trailer; curY := F.Y + F.H - F.top - asr;
@@ -204,7 +204,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE Show* (F: Frame; pos: LONGINT);
     VAR R: Texts.Reader; L, L0: Line;
-      org: LONGINT; curY, botY, Y0: INTEGER;
+      org: LONGINT; curY, botY, Y0: LONGINT;
   BEGIN
     IF F.trailer.next # F.trailer THEN
       Validate(F.text, pos);
@@ -245,8 +245,8 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     SetChangeMark(F, F.text.changed)
   END Show;
 
-  PROCEDURE LocateLine (F: Frame; y: INTEGER; VAR loc: Location);
-    VAR L: Line; org: LONGINT; cury: INTEGER;
+  PROCEDURE LocateLine (F: Frame; y: LONGINT; VAR loc: Location);
+    VAR L: Line; org: LONGINT; cury: LONGINT;
   BEGIN org := F.org; L := F.trailer.next; cury := F.H - F.top - asr; 
     WHILE (L.next # F.trailer) & (cury > y + dsr) DO
       org := org + L.len; L := L.next; cury := cury - lsp
@@ -254,10 +254,10 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     loc.org := org; loc.lin := L; loc.y := cury
   END LocateLine;
 
-  PROCEDURE LocateString (F: Frame; x, y: INTEGER; VAR loc: Location);
+  PROCEDURE LocateString (F: Frame; x, y: LONGINT; VAR loc: Location);
     VAR R: Texts.Reader;
       patadr, bpos, pos, lim: LONGINT;
-      bx, ex, ox, dx, u, v, w, h: INTEGER;
+      bx, ex, ox, dx, u, v, w, h: LONGINT;
   BEGIN LocateLine(F, y, loc);
     lim := loc.org + loc.lin.len - 1;
     bpos := loc.org; bx := F.left;
@@ -283,10 +283,10 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     loc.pos := bpos; loc.dx := ex - bx; loc.x := bx
   END LocateString;
 
-  PROCEDURE LocateChar (F: Frame; x, y: INTEGER; VAR loc: Location);
+  PROCEDURE LocateChar (F: Frame; x, y: LONGINT; VAR loc: Location);
     VAR R: Texts.Reader;
       patadr, pos, lim: LONGINT;
-      ox, dx, u, v, w, h: INTEGER;
+      ox, dx, u, v, w, h: LONGINT;
   BEGIN LocateLine(F, y, loc);
     lim := loc.org + loc.lin.len - 1;
     pos := loc.org; ox := F.left; dx := eolW;
@@ -305,7 +305,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE LocatePos (F: Frame; pos: LONGINT; VAR loc: Location);
     VAR T: Texts.Text; R: Texts.Reader; L: Line;
-      org: LONGINT; cury: INTEGER;  
+      org: LONGINT; cury: LONGINT;  
   BEGIN T := F.text;
     org := F.org; L := F.trailer.next; cury := F.H - F.top - asr;
     IF pos < org THEN pos := org END;
@@ -318,7 +318,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     loc.x := F.left + Width(R, pos - org); loc.y := cury
   END LocatePos;
 
-  PROCEDURE Pos* (F: Frame; X, Y: INTEGER): LONGINT;
+  PROCEDURE Pos* (F: Frame; X, Y: LONGINT): LONGINT;
     VAR loc: Location;
   BEGIN LocateChar(F, X - F.X, Y - F.Y, loc); RETURN loc.pos
   END Pos;
@@ -334,7 +334,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   BEGIN LocatePos(F, pos, F.carloc); FlipCaret(F); F.hasCar := TRUE
   END SetCaret;
 
-  PROCEDURE TrackCaret* (F: Frame; X, Y: INTEGER; VAR keysum: SET);
+  PROCEDURE TrackCaret* (F: Frame; X, Y: LONGINT; VAR keysum: SET);
     VAR loc: Location; keys: SET;
   BEGIN
     IF F.trailer.next # F.trailer THEN
@@ -353,7 +353,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END RemoveCaret;
 
   PROCEDURE FlipSelection (F: Frame; VAR beg, end: Location);
-    VAR L: Line; Y: INTEGER;
+    VAR L: Line; Y: LONGINT;
   BEGIN L := beg.lin; Y := F.Y + beg.y - 2;
     IF L = end.lin THEN ReplConst(Display.white, F, F.X + beg.x, Y, end.x - beg.x, selH, Display.invert)
     ELSE
@@ -376,7 +376,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     END
   END SetSelection;
 
-  PROCEDURE TrackSelection* (F: Frame; X, Y: INTEGER; VAR keysum: SET);
+  PROCEDURE TrackSelection* (F: Frame; X, Y: LONGINT; VAR keysum: SET);
     VAR loc: Location; keys: SET;
   BEGIN
     IF F.trailer.next # F.trailer THEN
@@ -407,7 +407,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   BEGIN IF F.hasSel THEN FlipSelection(F, F.selbeg, F.selend); F.hasSel := FALSE END
   END RemoveSelection;
 
-  PROCEDURE TrackLine* (F: Frame; X, Y: INTEGER; VAR org: LONGINT; VAR keysum: SET);
+  PROCEDURE TrackLine* (F: Frame; X, Y: LONGINT; VAR org: LONGINT; VAR keysum: SET);
     VAR old, new: Location; keys: SET;
   BEGIN
     IF F.trailer.next # F.trailer THEN
@@ -430,7 +430,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     END
   END TrackLine;
 
-  PROCEDURE TrackWord* (F: Frame; X, Y: INTEGER; VAR pos: LONGINT; VAR keysum: SET);
+  PROCEDURE TrackWord* (F: Frame; X, Y: LONGINT; VAR pos: LONGINT; VAR keysum: SET);
     VAR old, new: Location; keys: SET;
   BEGIN
     IF F.trailer.next # F.trailer THEN
@@ -455,7 +455,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   
   PROCEDURE Replace* (F: Frame; beg, end: LONGINT);
     VAR R: Texts.Reader; L: Line;
-      org, len: LONGINT; curY, wid: INTEGER;
+      org, len: LONGINT; curY, wid: LONGINT;
   BEGIN
     IF end > F.org THEN
       IF beg < F.org THEN beg := F.org END;
@@ -481,7 +481,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE Insert* (F: Frame; beg, end: LONGINT);
     VAR R: Texts.Reader; L, L0, l: Line;
-      org, len: LONGINT; curY, botY, Y0, Y1, Y2, dY, wid: INTEGER;
+      org, len: LONGINT; curY, botY, Y0, Y1, Y2, dY, wid: LONGINT;
   BEGIN
     IF beg < F.org THEN F.org := F.org + (end - beg)
     ELSE
@@ -531,7 +531,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE Delete* (F: Frame; beg, end: LONGINT);
     VAR R: Texts.Reader; L, L0, l: Line;
-      org, org0, len: LONGINT; curY, botY, Y0, Y1, wid: INTEGER;
+      org, org0, len: LONGINT; curY, botY, Y0, Y1, wid: LONGINT;
   BEGIN
     IF end <= F.org THEN F.org := F.org - (end - beg)
     ELSE
@@ -588,13 +588,13 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   BEGIN RemoveCaret(F); RemoveSelection(F)
   END RemoveMarks;
 
-  PROCEDURE NotifyDisplay* (T: Texts.Text; op: INTEGER; beg, end: LONGINT);
+  PROCEDURE NotifyDisplay* (T: Texts.Text; op: LONGINT; beg, end: LONGINT);
     VAR M: UpdateMsg;
   BEGIN M.id := op; M.text := T; M.beg := beg; M.end := end; Viewers.Broadcast(M)
   END NotifyDisplay;
 
   PROCEDURE Call* (F: Frame; pos: LONGINT; new: BOOLEAN);
-    VAR S: Texts.Scanner; res: INTEGER;
+    VAR S: Texts.Scanner; res: LONGINT;
   BEGIN
     Texts.OpenScanner(S, F.text, pos); Texts.Scan(S);
     IF (S.class = Texts.Name) & (S.line = 0) THEN
@@ -614,7 +614,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     END
   END Call;
 
-  PROCEDURE Write* (F: Frame; ch: CHAR; fnt: Fonts.Font; col, voff: INTEGER);
+  PROCEDURE Write* (F: Frame; ch: CHAR; fnt: Fonts.Font; col, voff: LONGINT);
     VAR buf: Texts.Buffer;
   BEGIN (*F.hasCar*)
     IF ch = BS THEN  (*backspace*)
@@ -647,7 +647,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   BEGIN RemoveMarks(F)
   END Neutralize;
 
-  PROCEDURE Modify* (F: Frame; id, dY, Y, H: INTEGER);
+  PROCEDURE Modify* (F: Frame; id, dY, Y, H: LONGINT);
   BEGIN
     Mark(F, FALSE); RemoveMarks(F); SetChangeMark(F,  FALSE);
     IF id = MenuViewers.extend THEN
@@ -661,7 +661,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END Modify;
 
   PROCEDURE Open* (F: Frame; H: Display.Handler; T: Texts.Text; org: LONGINT;
-        col, left, right, top, bot, lsp: INTEGER);
+        col, left, right, top, bot, lsp: LONGINT);
     VAR L: Line;
   BEGIN NEW(L);
     L.len := 0; L.wid := 0; L.eot := FALSE; L.next := L;
@@ -707,7 +707,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     SetChangeMark(F,  F.text.changed)
   END Update;
 
-  PROCEDURE Edit* (F: Frame; X, Y: INTEGER; Keys: SET);
+  PROCEDURE Edit* (F: Frame; X, Y: LONGINT; Keys: SET);
     VAR M: CopyOverMsg;
       text: Texts.Text;
       buf: Texts.Buffer;
@@ -715,7 +715,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
       beg, end, time, pos: LONGINT;
       keysum: SET;
       fnt: Fonts.Font;
-      col, voff: INTEGER;
+      col, voff: LONGINT;
   BEGIN
     IF X < F.X + Min(F.left, barW) THEN  (*scroll bar*)
       Oberon.DrawMouse(ScrollMarker, X, Y); keysum := Keys;
@@ -794,23 +794,30 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   PROCEDURE Handle* (F: Display.Frame; VAR M: Display.FrameMsg);
     VAR F1: Frame; buf: Texts.Buffer;
   BEGIN
-    CASE F OF Frame:
-      CASE M OF
-      Oberon.InputMsg:
-        IF M.id = Oberon.track THEN Edit(F, M.X, M.Y, M.keys)
-        ELSIF M.id = Oberon.consume THEN
-          IF F.hasCar THEN Write(F, M.ch, M.fnt, M.col, M.voff) END
-        END |
-      Oberon.ControlMsg:
-        IF M.id = Oberon.defocus THEN Defocus(F)
-        ELSIF M.id = Oberon.neutralize THEN Neutralize(F)
-        END |
-      Oberon.SelectionMsg:
-        GetSelection(F, M.text, M.beg, M.end, M.time) |
-      Oberon.CopyMsg: Copy(F, F1); M.F := F1 |
-      MenuViewers.ModifyMsg: Modify(F, M.id, M.dY, M.Y, M.H) |
-      CopyOverMsg: CopyOver(F, M.text, M.beg, M.end) |
-      UpdateMsg: IF F.text = M.text THEN Update(F, M) END
+    WITH F: Frame DO
+      IF M IS Oberon.InputMsg THEN
+        WITH M: Oberon.InputMsg DO
+          IF M.id = Oberon.track THEN Edit(F, M.X, M.Y, M.keys)
+          ELSIF M.id = Oberon.consume THEN
+            IF F.hasCar THEN Write(F, M.ch, M.fnt, M.col, M.voff) END
+          END
+        END
+      ELSIF M IS Oberon.ControlMsg THEN
+        WITH M: Oberon.ControlMsg DO
+          IF M.id = Oberon.defocus THEN Defocus(F)
+          ELSIF M.id = Oberon.neutralize THEN Neutralize(F)
+          END
+        END
+      ELSIF M IS Oberon.SelectionMsg THEN
+        WITH M: Oberon.SelectionMsg DO GetSelection(F, M.text, M.beg, M.end, M.time) END
+      ELSIF M IS Oberon.CopyMsg THEN
+        WITH M: Oberon.CopyMsg DO Copy(F, F1); M.F := F1 END
+      ELSIF M IS MenuViewers.ModifyMsg THEN
+        WITH M: MenuViewers.ModifyMsg DO Modify(F, M.id, M.dY, M.Y, M.H) END
+      ELSIF M IS CopyOverMsg THEN
+        WITH M: CopyOverMsg DO CopyOver(F, M.text, M.beg, M.end) END
+      ELSIF M IS UpdateMsg THEN
+        WITH M: UpdateMsg DO IF F.text = M.text THEN Update(F, M) END END
       END
     END
   END Handle;

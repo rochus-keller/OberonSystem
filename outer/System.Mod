@@ -1,5 +1,5 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
-  IMPORT SYSTEM, Kernel, FileDir, Files, Modules,
+  IMPORT SYSTEM, SYS, Kernel, FileDir, Files, Modules,
     Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
   CONST
@@ -7,6 +7,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     LogMenu = "Edit.Locate Edit.Search System.Copy System.Grow System.Clear";
 
   VAR W: Texts.Writer;
+    trap: PROCEDURE (VAR a: LONGINT; b: LONGINT);
+    abort: PROCEDURE;
     pat: ARRAY 32 OF CHAR;
 
   PROCEDURE GetArg(VAR S: Texts.Scanner);
@@ -25,7 +27,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   (* ------------- Toolbox for system control ---------------*)
 
   PROCEDURE SetUser*;
-    VAR i: INTEGER; ch: CHAR;
+    VAR i: LONGINT; ch: CHAR;
       user: ARRAY 8 OF CHAR;
       password: ARRAY 16 OF CHAR;
   BEGIN i := 0; Input.Read(ch);
@@ -74,7 +76,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   (* ------------- Toolbox for standard display ---------------*)
 
   PROCEDURE Open*;  (*open viewer in system track*)
-    VAR X, Y: INTEGER;
+    VAR X, Y: LONGINT;
       V: Viewers.Viewer;
       S: Texts.Scanner;
   BEGIN GetArg(S);
@@ -125,7 +127,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   PROCEDURE Grow*;
     VAR V, V1: Viewers.Viewer; M: Oberon.CopyMsg; N: Viewers.ViewerMsg;
-      DW, DH: INTEGER;
+      DW, DH: LONGINT;
   BEGIN V := Oberon.Par.vwr;
     DW := Oberon.DisplayWidth(V.X); DH := Oberon.DisplayHeight(V.X);
     IF V.H < DH - Viewers.minH THEN Oberon.OpenTrack(V.X, V.W)
@@ -171,7 +173,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   (* ------------- Toolbox of file system ---------------*)
 
   PROCEDURE List(name: FileDir.FileName; adr: LONGINT; VAR cont: BOOLEAN);
-    VAR i0, i, j0, j: INTEGER; hp: FileDir.FileHeader;
+    VAR i0, i, j0, j: LONGINT; hp: FileDir.FileHeader;
   BEGIN
     i := 0;
     WHILE (pat[i] > "*") & (pat[i] = name[i]) DO INC(i) END ;
@@ -201,7 +203,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   END List;
 
   PROCEDURE Directory*;
-    VAR X, Y, i: INTEGER; ch: CHAR;
+    VAR X, Y, i: LONGINT; ch: CHAR;
       R: Texts.Reader;
       T, t: Texts.Text;
       V: Viewers.Viewer;
@@ -237,7 +239,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   BEGIN GetArg(S);
     Texts.WriteString(W, "System.CopyFiles"); EndLine;
     WHILE S.class = Texts.Name DO
-      name := S.s; Texts.Scan(S);
+      COPY(S.s, name); Texts.Scan(S);
       IF (S.class = Texts.Char) & (S.c = "=") THEN Texts.Scan(S);
         IF (S.class = Texts.Char) & (S.c = ">") THEN Texts.Scan(S);
           IF S.class = Texts.Name THEN
@@ -259,13 +261,13 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   END CopyFiles;
 
   PROCEDURE RenameFiles*;
-    VAR res: INTEGER;
+    VAR res: LONGINT;
       name: ARRAY 32 OF CHAR;
       S: Texts.Scanner;
   BEGIN GetArg(S);
     Texts.WriteString(W, "System.RenameFiles"); EndLine;
     WHILE S.class = Texts.Name DO
-      name := S.s; Texts.Scan(S);
+      COPY(S.s, name); Texts.Scan(S);
       IF (S.class = Texts.Char) & (S.c = "=") THEN Texts.Scan(S);
         IF (S.class = Texts.Char) & (S.c = ">") THEN Texts.Scan(S);
           IF S.class = Texts.Name THEN
@@ -281,7 +283,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   END RenameFiles;
 
   PROCEDURE DeleteFiles*;
-    VAR res: INTEGER; S: Texts.Scanner;
+    VAR res: LONGINT; S: Texts.Scanner;
   BEGIN GetArg(S);
     Texts.WriteString(W, "System.DeleteFiles"); EndLine;
     WHILE S.class = Texts.Name DO
@@ -309,7 +311,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     VAR T: Texts.Text;
       V: Viewers.Viewer;
       M: Modules.Module;
-      X, Y: INTEGER;
+      X, Y: LONGINT;
   BEGIN T := TextFrames.Text("");
     Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y);
     V := MenuViewers.New(TextFrames.NewMenu("System.ShowModules", StandardMenu),
@@ -317,7 +319,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     M := Modules.root;
     WHILE M # NIL DO
       IF M.name[0] # 0X THEN
-        Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));
+        Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, SYSTEM.VAL(LONGINT, M));
         Texts.WriteHex(W, M.code); Texts.WriteInt(W, M.refcnt, 4)
       ELSE Texts.WriteString(W, "---")
       END ;
@@ -332,7 +334,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
       T: Texts.Text;
       S: Texts.Scanner;
       V: Viewers.Viewer;
-      X, Y: INTEGER;
+      X, Y: LONGINT;
   BEGIN GetArg(S);
     IF S.class = Texts.Name THEN
       Modules.Load(S.s, M);
@@ -365,7 +367,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   PROCEDURE OpenViewers;
     VAR logV, toolV: Viewers.Viewer;
       menu, main: Display.Frame;
-      d: LONGINT; X, Y: INTEGER;
+      d: LONGINT; X, Y: LONGINT;
   BEGIN d := Kernel.Clock(); Texts.WriteString(W, "Oberon V5  NW 14.4.2013"); EndLine;
     Oberon.AllocateSystemViewer(0, X, Y);
     menu := TextFrames.NewMenu("System.Log", LogMenu);
@@ -379,7 +381,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   PROCEDURE ExtendDisplay*;
     VAR V: Viewers.Viewer;
-      X, Y, DX, DW, DH: INTEGER;
+      X, Y, DX, DW, DH: LONGINT;
       S: Texts.Scanner;
   BEGIN GetArg(S);
     IF S.class = Texts.Name THEN
@@ -393,9 +395,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     END
   END ExtendDisplay;
 
-  PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
-    VAR u, v, w: INTEGER; mod: Modules.Module;
-  BEGIN u := SYSTEM.REG(15); SYSTEM.GET(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
+  PROCEDURE Trap(VAR a: LONGINT; b: LONGINT);
+    VAR u, v, w: LONGINT; mod: Modules.Module;
+  BEGIN u := SYS.REG(15); SYSTEM.GET(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
     IF w = 0 THEN Kernel.New(a, b)
     ELSE (*trap*) Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteInt(W, v DIV 100H MOD 10000H, 4);
       Texts.WriteString(W, "  TRAP"); Texts.WriteInt(W, w, 4); mod := Modules.root;
@@ -407,12 +409,13 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   END Trap;
 
   PROCEDURE Abort;
-    VAR n: INTEGER;
-  BEGIN n := SYSTEM.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, n);
+    VAR n: LONGINT;
+  BEGIN n := SYS.REG(15); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, n);
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf); Oberon.Reset
   END Abort;
   
 BEGIN Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
-  Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);
+  trap := Trap; abort := Abort;
+  Kernel.Install(SYSTEM.VAL(LONGINT, trap), 20H); Kernel.Install(SYSTEM.VAL(LONGINT, abort), 0);
 END System.
