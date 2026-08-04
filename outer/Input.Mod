@@ -2,7 +2,7 @@ MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-
   IMPORT SYSTEM, SYS;
 
   CONST msAdr = -40; kbdAdr = -36;
-  VAR kbdCode: SYSTEM.BYTE; (*last keyboard code read*)
+  VAR kbdCode: CHAR; (*last keyboard code read*)
     Recd, Up, Shift, Ctrl, Ext: BOOLEAN;
     KTabAdr: LONGINT;  (*keyboard code translation table*)
     MW, MH, MX, MY: LONGINT; (*mouse limits and coords*)
@@ -13,8 +13,9 @@ MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-
   including tracking the state of the Shift and Ctrl keys*)
   
   PROCEDURE Peek();
-  BEGIN
-    IF SYSTEM.BIT(msAdr, 28) THEN
+    VAR w: LONGINT;
+  BEGIN SYSTEM.GET(msAdr, w);
+    IF ODD(w DIV 10000000H) THEN (*OP2 relocates SYSTEM.BIT of a constant address*)
       SYSTEM.GET(kbdAdr, kbdCode);
       IF ORD(kbdCode) = 0F0H THEN Up := TRUE
       ELSIF ORD(kbdCode) = 0E0H THEN Ext := TRUE

@@ -1,5 +1,5 @@
 MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
-  IMPORT SYSTEM, SYS, Files;
+  IMPORT SYSTEM, SYS, Kernel, Files;
   CONST versionkey = 1X; MT = 12; DescSize = 80;
 
   TYPE Module* = POINTER TO ModDesc;
@@ -10,7 +10,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
         name*: ModuleName;
         next*: Module;
         key*, num*, size*, refcnt*: LONGINT;
-        data*, code*, imp*, cmd*, ent*, ptr*, unused: LONGINT  (*addresses*)
+        data*, code*, imp*, cmd*, ent*, ptr*, unused: LONGINT;  (*addresses*)
+        cmds*: Kernel.Commands;  (*commands of the statically linked module*)
+        ptrs*: Kernel.Entries  (*global pointers of the statically linked module*)
       END ;
 
   VAR root*, M: Module;
@@ -43,9 +45,17 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   END Check;
 
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Module);
-    (*search module in list; if not found, load module.
-      res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
-      res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
+    (*deviation from Wirth's original: all modules are linked into the boot image
+      by the boot linker and their bodies have been executed at startup *)
+    VAR mod: Module;
+  BEGIN mod := root; res := 0;
+    WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
+    IF mod = NIL THEN error(2, name) END ;
+    newmod := mod
+  END Load;
+
+  PROCEDURE LoadDynamically(name: ARRAY OF CHAR; VAR newmod: Module);
+    (*Wirth's original Load, kept for reference *)
     VAR mod, impmod: Module;
       i, n, key, impkey, mno, nofimps, size: LONGINT;
       p, u, v, w: LONGINT;  (*addresses*)
@@ -183,20 +193,16 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
       END 
     END ;
     newmod :=  mod
-  END Load;
+  END LoadDynamically;
 
   PROCEDURE ThisCommand*(mod: Module; name: ARRAY OF CHAR): Command;
-    VAR k, adr, w: LONGINT; ch: CHAR;
-      s: ARRAY 32 OF CHAR;
+    (*deviation from Wirth's original*)
+    VAR i, w: LONGINT;
   BEGIN res := 5; w := 0;
-    IF mod # NIL THEN
-      adr := mod.cmd; SYSTEM.GET(adr, ch);
-      WHILE (ch # 0X) & (res # 0) DO k := 0; (*read command name*)
-        REPEAT s[k] := ch; INC(k); INC(adr); SYSTEM.GET(adr, ch) UNTIL ch = 0X;
-        s[k] := 0X;
-        REPEAT INC(adr) UNTIL adr MOD 4 = 0;
-        SYSTEM.GET(adr, k); INC(adr, 4);
-        IF s = name THEN res := 0; w := mod.code + k ELSE SYSTEM.GET(adr, ch) END
+    IF (mod # NIL) & (mod.cmds # NIL) THEN i := 0;
+      WHILE (res # 0) & (i < LEN(mod.cmds^)) DO
+        IF mod.cmds[i].name = name THEN res := 0; w := mod.cmds[i].adr END ;
+        INC(i)
       END
     END;
     RETURN SYSTEM.VAL(Command, w)
@@ -216,10 +222,24 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 9.4.2016*)
   END Free;
 
   PROCEDURE Init*;
-  BEGIN Files.Init; MTOrg := SYS.REG(MT);
-    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H)
+    (*deviation from Wirth's original*)
+    VAR k: Kernel.Module; mod, last: Module; i, n: LONGINT;
+  BEGIN Files.Init; MTOrg := 0; AllocPtr := 0; limit := Kernel.heapOrg;
+    root := NIL; last := NIL; k := Kernel.modules;
+    WHILE k # NIL DO
+      NEW(mod); COPY(k.name, mod.name); mod.next := NIL;
+      mod.key := 0; mod.num := 0; mod.size := 0; mod.refcnt := k.refcnt;
+      mod.data := k.data; mod.code := k.code;
+      mod.imp := 0; mod.cmd := 0; mod.ent := 0; mod.ptr := 0; mod.cmds := k.cmds;
+      IF k.ptrTab # NIL THEN n := LEN(k.ptrTab^) ELSE n := 0 END ;
+      IF n > 0 THEN NEW(mod.ptrs, n+1); i := 0;
+        WHILE i < n DO mod.ptrs[i] := k.ptrTab[i]; INC(i) END ;
+        mod.ptrs[n] := 0; mod.ptr := SYSTEM.ADR(mod.ptrs[0])
+      END ;
+      IF last = NIL THEN root := mod ELSE last.next := mod END ;
+      last := mod; k := k.link
+    END
   END Init;
 
-BEGIN Init; Load("Oberon", M);
-    SYS.LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
+BEGIN Init  (*the bodies of the other modules are called by the boot linker*)
 END Modules.

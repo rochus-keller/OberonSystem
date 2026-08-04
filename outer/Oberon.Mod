@@ -409,6 +409,7 @@ BEGIN User[0] := 0X;
   FocusViewer := Viewers.This(0, 0);
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
-  ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
-  Modules.Load("System", Mod); Mod := NIL; Loop
+  ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask)
+  (*deviation: System is linked into the boot image, and Loop is started by the
+    boot linker after the bodies of all modules have been executed*)
 END Oberon.

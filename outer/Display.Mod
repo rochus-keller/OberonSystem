@@ -76,8 +76,10 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   END ReplConst;
 
   PROCEDURE CopyPattern*(col, patadr, x, y, mode: LONGINT);  (*only for modes = paint, invert*)
+    (*deviation from Wirth's original: the pattern bytes are CHAR instead of
+      SYSTEM.BYTE because ORD of latter is signed in OP2*)
     VAR a, a0, pwd, w, h: LONGINT;
-      wb, hb, pbt: SYSTEM.BYTE; pix: SET;
+      wb, hb, pbt: CHAR; pix: SET;
   BEGIN SYSTEM.GET(patadr, wb); SYSTEM.GET(patadr+1, hb); INC(patadr, 2);
     w := ORD(wb); h := ORD(hb);
     a := base + (x DIV 32)*4 + y*128; 
@@ -162,7 +164,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   (* pattern width = 32, fixed; pattern starts at patadr+4, for mode = invert only *)
     VAR al, ar, a0, a1: LONGINT;
       pta0, pta1: LONGINT;  (*pattern addresses*)
-      ph: SYSTEM.BYTE;
+      ph: CHAR;
       left, right, mid, pix, pixl, pixr, ptw: SET;
   BEGIN al := base + y*128; SYSTEM.GET(patadr+1, ph);
     pta0 := patadr+4; pta1 := ORD(ph)*4 + pta0;
@@ -186,6 +188,7 @@ MODULE Display;  (*NW 5.11.2013 / 3.7.2016*)
   END ReplPattern;
 
 BEGIN Base := base; Width := 1024; Height := 768;
+  (*Ob90 has no byte array literals*)
   SYS.PutHex(arrowP, 0, "0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00");
   SYS.PutHex(starP, 0, "0F0F 8000 8220 8410 8808 9004 A002 C001 7F7F C001 A002 9004 8808 8410 8220 8000");
   SYS.PutHex(hookP, 0, "0C0C 070F 8707 C703 E701 F700 7F00 3F00 1F00 0F00 0700 0300 01");

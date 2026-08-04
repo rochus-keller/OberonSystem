@@ -21,7 +21,7 @@ MODULE Fonts; (*JG 18.11.90; PDR 8.6.12; NW 25.3.2013*)
 VAR Default*, root*: Font;
 
 PROCEDURE GetPat*(fnt: Font; ch: CHAR; VAR dx, x, y, w, h, patadr: LONGINT);
-  VAR pa: LONGINT;  dxb, xb, yb, wb, hb: SYSTEM.BYTE;
+  VAR pa: LONGINT;  dxb, xb, yb, wb, hb: CHAR;
 BEGIN pa := fnt.T[ORD(ch) MOD 80H]; patadr := pa;
   SYSTEM.GET(pa-3, dxb); SYSTEM.GET(pa-2, xb); SYSTEM.GET(pa-1, yb); SYSTEM.GET(pa, wb); SYSTEM.GET(pa+1, hb);
   dx := ORD(dxb); x := ORD(xb); y := ORD(yb); w := ORD(wb); h := ORD(hb);
@@ -29,23 +29,22 @@ BEGIN pa := fnt.T[ORD(ch) MOD 80H]; patadr := pa;
 END GetPat;
 
 PROCEDURE This*(name: ARRAY OF CHAR): Font;
-
-  TYPE RunRec = RECORD beg, end: SYSTEM.BYTE END ;
-    BoxRec = RECORD dx, x, y, w, h: SYSTEM.BYTE END ;
+  TYPE RunRec = RECORD beg, end: CHAR END ;
+    BoxRec = RECORD dx, x, y, w, h: CHAR END ;
     
   VAR F: Font; LF: LargeFont;
     f: Files.File; R: Files.Rider;
-    NofRuns, NofBoxes: SYSTEM.BYTE;
+    NofRuns, NofBoxes: CHAR;
     NofBytes: LONGINT;
-    height, minX, maxX, minY, maxY: SYSTEM.BYTE;
+    height, minX, maxX, minY, maxY: CHAR;
     i, j, k, m, n: LONGINT;
     a, a0: LONGINT;
-    b, beg, end: SYSTEM.BYTE;
+    b, beg, end: CHAR;
     run: ARRAY 16 OF RunRec;
     box: ARRAY 512 OF BoxRec;
 
-  PROCEDURE RdInt16(VAR R: Files.Rider; VAR b0: SYSTEM.BYTE);
-    VAR b1: SYSTEM.BYTE;
+  PROCEDURE RdInt16(VAR R: Files.Rider; VAR b0: CHAR);
+    VAR b1: CHAR;
   BEGIN Files.ReadByte(R, b0); Files.ReadByte(R, b1)
   END RdInt16;
 
@@ -61,7 +60,7 @@ BEGIN F := root;
         Files.ReadByte(R, b); (*variant*)
         NEW(F); COPY(name, F.name);
         RdInt16(R, height); RdInt16(R, minX); RdInt16(R, maxX); RdInt16(R, minY); RdInt16(R, maxY); RdInt16(R, NofRuns);
-        NofBoxes := 0; k := 0;
+        NofBoxes := 0X; k := 0;
         WHILE k # ORD(NofRuns) DO
           RdInt16(R, beg);
           run[k].beg := beg; RdInt16(R, end);
