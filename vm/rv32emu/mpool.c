@@ -3,6 +3,7 @@
  * "LICENSE" for information on usage and redistribution of this file.
  */
 
+#include "common.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>

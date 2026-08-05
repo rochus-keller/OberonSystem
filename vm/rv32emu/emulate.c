@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "common.h"
 
 #if RV32_HAS(EXT_F)
 #include <math.h>

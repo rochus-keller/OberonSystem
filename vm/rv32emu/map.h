@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <rv32emu/common.h>
 
 /* Red-black tree node structure.
  *

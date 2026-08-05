@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <rv32emu/common.h>
 
 /* Currently, THRESHOLD is set to identify hot spots. Once the using frequency
  * for a block exceeds the THRESHOLD, the tier-1 JIT compiler process is

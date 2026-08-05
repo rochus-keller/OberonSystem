@@ -21,6 +21,7 @@
  */
 
 #include "log.h"
+#include "common.h"
 
 static struct {
     void *udata;

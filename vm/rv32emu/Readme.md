@@ -12,4 +12,5 @@ Changes:
 - Also added an ifdef FORCE_C99 in common.h to support
   C99 build on a recent GCC.
 - Updated SoftFloat path in riscv.h
+- Added common.h directly to the files depending on it instead via compiler option
 

@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include "common.h"
 
 #if RV32_HAS(SYSTEM_MMIO)
 #include <termios.h>

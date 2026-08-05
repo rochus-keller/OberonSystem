@@ -21,8 +21,6 @@ QMAKE_CFLAGS += -Wno-unused-label
 
 DEFINES += 'INLINE="static inline"'
 
-QMAKE_CFLAGS += -include $$PWD/rv32emu/common.h
-
 DEFINES += \
     HAVE_MMAP=0 \
     RV32_MMIO_CALLBACKS \

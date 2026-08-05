@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <rv32emu/common.h>
 
 /* main memory */
 typedef struct {

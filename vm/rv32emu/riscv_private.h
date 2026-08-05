@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "common.h"
+#include <rv32emu/common.h>
 
 #if RV32_HAS(GDBSTUB)
 #include "breakpoint.h"

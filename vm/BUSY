@@ -1,0 +1,114 @@
+
+
+let config : Config {
+    .include_dirs += [ . ./rv32emu ./softfloat/include ./softfloat/RISCV ]
+    .defines += [
+        "HAVE_MMAP=0"
+        "RV32_MMIO_CALLBACKS"
+        "RV32_FEATURE_EXT_M=1"
+        "RV32_FEATURE_EXT_A=1"
+        "RV32_FEATURE_EXT_F=1"
+        "RV32_FEATURE_EXT_C=0"
+        "RV32_FEATURE_EXT_V=0"
+        "RV32_FEATURE_Zba=0"
+        "RV32_FEATURE_Zbb=0"
+        "RV32_FEATURE_Zbc=0"
+        "RV32_FEATURE_Zbs=0"
+        "RV32_FEATURE_Zicond=0"
+        "RV32_FEATURE_JIT=0"
+        "RV32_FEATURE_T2C=0"
+        "RV32_FEATURE_SDL=0"
+        "RV32_FEATURE_SDL_MIXER=0"
+        "RV32_FEATURE_GDBSTUB=0"
+        "RV32_FEATURE_SYSTEM=0"
+        "RV32_FEATURE_ELF_LOADER=0"
+        "RV32_FEATURE_MOP_FUSION=1"
+        "RV32_FEATURE_BLOCK_CHAINING=1"
+        "RV32_FEATURE_LOG_COLOR=0"
+        "RV32_FEATURE_ARCH_TEST=0"
+        "RV32_FEATURE_RV32E=0"
+        "RV32_FEATURE_FULL4G=0"
+        
+        "LITTLEENDIAN=1"
+        "INLINE_LEVEL=5"
+        "SOFTFLOAT_ROUND_ODD"
+        "SOFTFLOAT_FAST_INT64"
+        "SOFTFLOAT_FAST_DIV64TO32"
+        
+        "INLINE=static inline"
+    ]
+    if build_mode == `debug {
+        .defines += "_DEBUG"
+    }
+    if target_toolchain == `gcc {
+        .cflags += [ "-Wall" "-Wno-unused-parameter" "-Wno-unused-function" "-Wno-reorder" "-Wno-switch" "-Wno-unused-label" ]
+    }
+}
+
+let rv32emu : SourceSet {
+    .configs += config;
+    .sources += [
+        # rv32_template.c and rv32_constopt.c are included in emulate.c
+        ./rv32emu/emulate.c 
+        ./rv32emu/decode.c 
+        ./rv32emu/riscv.c 
+        ./rv32emu/io.c 
+        ./rv32emu/map.c 
+        ./rv32emu/mpool.c 
+        ./rv32emu/cache.c 
+        ./rv32emu/utils.c 
+        ./rv32emu/log.c 
+        ./rv32emu/elf.c
+    ]
+}
+
+let softfloat : SourceSet {
+    .configs += config;
+    .sources += [
+        ./softfloat/f32_add.c
+        ./softfloat/f32_div.c
+        ./softfloat/f32_eq.c
+        ./softfloat/f32_isSignalingNaN.c
+        ./softfloat/f32_le.c
+        ./softfloat/f32_lt.c
+        ./softfloat/f32_lt_quiet.c
+        ./softfloat/f32_mul.c
+        ./softfloat/f32_mulAdd.c
+        ./softfloat/f32_sqrt.c
+        ./softfloat/f32_sub.c
+        ./softfloat/f32_to_i32.c
+        ./softfloat/f32_to_ui32.c
+        ./softfloat/i32_to_f32.c
+        ./softfloat/s_addMagsF32.c
+        ./softfloat/s_approxRecipSqrt32_1.c
+        ./softfloat/s_approxRecipSqrt_1Ks.c
+        ./softfloat/s_countLeadingZeros8.c
+        ./softfloat/s_countLeadingZeros32.c
+        ./softfloat/s_countLeadingZeros64.c
+        ./softfloat/s_mulAddF32.c
+        ./softfloat/s_normRoundPackToF32.c
+        ./softfloat/s_normSubnormalF32Sig.c
+        ./softfloat/softfloat_state.c
+        ./softfloat/s_roundPackToF32.c
+        ./softfloat/s_roundToI32.c
+        ./softfloat/s_roundToUI32.c
+        ./softfloat/s_shiftRightJam32.c
+        ./softfloat/s_shiftRightJam64.c
+        ./softfloat/s_shortShiftRightJam64.c
+        ./softfloat/s_subMagsF32.c
+        ./softfloat/ui32_to_f32.c
+        ./softfloat/RISCV/softfloat_raiseFlags.c
+        ./softfloat/RISCV/s_propagateNaNF32UI.c
+    ]
+}
+
+let rv32vm ! : Executable {
+    .configs += config;
+	.sources += [
+        ./disk.c
+        ./machine.c
+        ./ScreenSdl.c
+	]
+    .deps += [ softfloat rv32emu ]
+	.lib_names += [ "SDL2" ]
+}

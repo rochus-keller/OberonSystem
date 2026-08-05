@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <sys/time.h>
 #include <time.h>
+#include <rv32emu/common.h>
 
 /* Obtain the system's notion of the current Greenwich time.
  * TODO: manipulate current time zone.
