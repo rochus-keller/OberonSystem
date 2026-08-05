@@ -471,7 +471,7 @@ DllExport int32_t Screen$Open(uint8_t* buf, int32_t bLen, int32_t w, int32_t h, 
     bufLen = bLen;
     flags  = fl;
 
-    window = SDL_CreateWindow("Micron Screen (SDL)",
+    window = SDL_CreateWindow("RV32 VM Screen (SDL)",
                               SDL_WINDOWPOS_UNDEFINED,
                               SDL_WINDOWPOS_UNDEFINED,
                               WIDTH, HEIGHT,

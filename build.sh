@@ -10,14 +10,16 @@ size=${size:-1024}            # size of the disk image in KBytes
 
 rm -rf build && mkdir build && cd build
 # from here on we are in the build directory of the source tree
-cp ../inner/*.Mod ../outer/*.Mod ../graph/*.Mod .
+cp ../inner/*.Mod ../outer/*.Mod ../graph/*.Mod ../apps/*.Mod .
 inner="SYS Kernel FileDir Files Modules"
 outer="Display Fonts Texts Viewers Input Oberon MenuViewers TextFrames Edit System"
 graph="Graphics GraphicFrames Curves Draw GraphTool Rectangles"
+apps="Hilbert Sierpinski Stars Hennessy"
 case "$1" in
   inner) list="$inner";;
   outer) list="$inner $outer";;
-  *) list="$inner $outer $graph";;
+  graph) list="$inner $outer $graph";;
+  *) list="$inner $outer $graph $apps";;
 esac
 rc=0
 for m in $list; do

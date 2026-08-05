@@ -3,8 +3,8 @@ MODULE Sierpinski;  (*NW 15.1.2013*)
 
   CONST Menu = "System.Close  System.Copy  System.Grow";
 
-  VAR x, y, d: INTEGER;
-    A, B, C, D: PROCEDURE (i: INTEGER);
+  VAR x, y, d: LONGINT;
+    A, B, C, D: PROCEDURE (i: LONGINT);
 
   PROCEDURE E;
   BEGIN Display.ReplConst(Display.white, x, y, d, 1, Display.paint); INC(x, d)
@@ -23,51 +23,51 @@ MODULE Sierpinski;  (*NW 15.1.2013*)
   END S;
 
   PROCEDURE NE;
-    VAR i: INTEGER;
+    VAR i: LONGINT;
   BEGIN i := d;
     REPEAT Display.Dot(Display.white, x, y, Display.paint); INC(x); INC(y); DEC(i) UNTIL i = 0
   END NE;
 
   PROCEDURE NW;
-    VAR i: INTEGER;
+    VAR i: LONGINT;
   BEGIN i := d;
     REPEAT Display.Dot(Display.white, x, y, Display.paint); DEC(x); INC(y); DEC(i) UNTIL i = 0
   END NW;
 
   PROCEDURE SW;
-    VAR i: INTEGER;
+    VAR i: LONGINT;
   BEGIN i := d;
     REPEAT Display.Dot(Display.white, x, y, Display.paint); DEC(x); DEC(y); DEC(i) UNTIL i = 0
   END SW;
 
   PROCEDURE SE;
-    VAR i: INTEGER;
+    VAR i: LONGINT;
   BEGIN i := d;
     REPEAT Display.Dot(Display.white, x, y, Display.paint); INC(x); DEC(y); DEC(i) UNTIL i = 0
   END SE;
 
-  PROCEDURE SA(i: INTEGER);
+  PROCEDURE SA(i: LONGINT);
   BEGIN
     IF i > 0 THEN A(i-1); SE; B(i-1); E; E; D(i-1); NE; A(i-1) END
   END SA;
 
-  PROCEDURE SB(i: INTEGER);
+  PROCEDURE SB(i: LONGINT);
   BEGIN
     IF i > 0 THEN B(i-1); SW; C(i-1); S; S; A(i-1); SE; B(i-1) END
   END SB;
 
-  PROCEDURE SC(i: INTEGER);
+  PROCEDURE SC(i: LONGINT);
   BEGIN
     IF i > 0 THEN C(i-1); NW; D(i-1); W; W; B(i-1); SW; C(i-1) END
   END SC;
 
-  PROCEDURE SD(i: INTEGER);
+  PROCEDURE SD(i: LONGINT);
   BEGIN
     IF i > 0 THEN D(i-1); NE; A(i-1); N; N; C(i-1); NW; D(i-1) END
   END SD;
 
   PROCEDURE DrawSierpinski(F: Display.Frame);
-    VAR k, n, w, x0, y0: INTEGER;
+    VAR k, n, w, x0, y0: LONGINT;
   BEGIN; k := 0; d := 4;
     IF F.W < F.H THEN w := F.W ELSE w := F.H END ;
     WHILE d*8 < w DO d := d*2; INC(k) END ;
@@ -102,7 +102,7 @@ MODULE Sierpinski;  (*NW 15.1.2013*)
   END New;
 
   PROCEDURE Draw*;
-    VAR V: Viewers.Viewer; X, Y: INTEGER;
+    VAR V: Viewers.Viewer; X, Y: LONGINT;
   BEGIN Oberon.AllocateUserViewer(Oberon.Par.vwr.X, X, Y);
     V := MenuViewers.New(TextFrames.NewMenu("Sierpinski", Menu), New(), TextFrames.menuH, X, Y)
   END Draw;

@@ -3,8 +3,8 @@ MODULE Hilbert;  (*NW 8.1.2013  for RISC*)
 
   CONST Menu = "System.Close  System.Copy  System.Grow";
 
-  VAR x, y, d: INTEGER;
-    A, B, C, D: PROCEDURE (i: INTEGER);
+  VAR x, y, d: LONGINT;
+    A, B, C, D: PROCEDURE (i: LONGINT);
 
   PROCEDURE E;
   BEGIN Display.ReplConst(Display.white, x, y, d, 1, Display.paint); INC(x, d)
@@ -22,28 +22,28 @@ MODULE Hilbert;  (*NW 8.1.2013  for RISC*)
   BEGIN DEC(y, d); Display.ReplConst(Display.white, x, y, 1, d, Display.paint)
   END S;
 
-  PROCEDURE HA(i: INTEGER);
+  PROCEDURE HA(i: LONGINT);
   BEGIN
     IF i > 0 THEN D(i-1); W; A(i-1); S; A(i-1); E; B(i-1) END
   END HA;
 
-  PROCEDURE HB(i: INTEGER);
+  PROCEDURE HB(i: LONGINT);
   BEGIN
     IF i > 0 THEN C(i-1); N; B(i-1); E; B(i-1); S; A(i-1) END
   END HB;
 
-  PROCEDURE HC(i: INTEGER);
+  PROCEDURE HC(i: LONGINT);
   BEGIN
     IF i > 0 THEN B(i-1); E; C(i-1); N; C(i-1); W; D(i-1) END
   END HC;
 
-  PROCEDURE HD(i: INTEGER);
+  PROCEDURE HD(i: LONGINT);
   BEGIN
     IF i > 0 THEN A(i-1); S; D(i-1); W; D(i-1); N; C(i-1) END
   END HD;
 
   PROCEDURE DrawHilbert(F: Display.Frame);
-    VAR k, n, w, x0, y0: INTEGER;
+    VAR k, n, w, x0, y0: LONGINT;
   BEGIN k := 0; d := 8;
     IF F.W < F.H THEN w := F.W ELSE w := F.H END ;
     WHILE d*2 < w DO d := d*2; INC(k) END ;
@@ -77,7 +77,7 @@ MODULE Hilbert;  (*NW 8.1.2013  for RISC*)
   END New;
 
   PROCEDURE Draw*;
-    VAR V: Viewers.Viewer; X, Y: INTEGER;
+    VAR V: Viewers.Viewer; X, Y: LONGINT;
   BEGIN Oberon.AllocateUserViewer(Oberon.Par.vwr.X, X, Y);
     V := MenuViewers.New(TextFrames.NewMenu("Hilbert", Menu), New(), TextFrames.menuH, X, Y)
   END Draw;

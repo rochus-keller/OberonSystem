@@ -6,7 +6,7 @@ MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
     interval = 200;  (*millisec*)
 
   TYPE Frame = POINTER TO FrameDesc;
-    Pos = RECORD x, y, dx, dy: INTEGER END ;
+    Pos = RECORD x, y, dx, dy: LONGINT END ;
     FrameDesc = RECORD (Display.FrameDesc) s: ARRAY N OF Pos END ;
     RestoreMsg = RECORD (Display.FrameMsg) END ;
     StepMsg = RECORD (Display.FrameMsg) END ;
@@ -14,12 +14,12 @@ MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
   VAR T: Oberon.Task;
     W: Texts.Writer;
 
-  PROCEDURE Draw(x, y: INTEGER);
+  PROCEDURE Draw(x, y: LONGINT);
   BEGIN Display.CopyPattern(Display.white, Display.star, x, y, Display.invert)
   END Draw;
 
   PROCEDURE Restore(F: Frame);
-    VAR x0, y0: INTEGER;
+    VAR x0, y0: LONGINT;
   BEGIN Oberon.RemoveMarks(F.X, F.Y, F.W, F.H);
     Display.ReplConst(0, F.X+1, F.Y, F.W-1, F.H, 0);
     x0 := F.W DIV 2 + F.X; y0 := F.H DIV 2 + F.Y;
@@ -32,7 +32,7 @@ MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
   END Restore;
 
   PROCEDURE Move(F: Frame; VAR p: Pos);
-    VAR X1, Y1: INTEGER;
+    VAR X1, Y1: LONGINT;
   BEGIN X1 := F.X + F.W - w; Y1 := F.Y + F.H - w;
     Draw(p.x, p.y); INC(p.x, p.dx); INC(p.y, p.dy);
     IF p.x < F.X THEN p.x := 2*F.X - p.x; p.dx := -p.dx ELSIF p.x >= X1 THEN p.x := 2*X1 - p.x; p.dx := -p.dx END ;
@@ -41,7 +41,7 @@ MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
   END Move;
 
   PROCEDURE Steps(F: Frame);
-    VAR i: INTEGER; 
+    VAR i: LONGINT; 
   BEGIN i := 0;
     WHILE i < N DO Move(F, F.s[i]); INC(i) END
   END Steps;
@@ -49,23 +49,25 @@ MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
   PROCEDURE Handle(F: Display.Frame; VAR M: Display.FrameMsg);
     VAR F1: Frame;
   BEGIN
-    CASE F OF Frame:
-      CASE M OF
-        Oberon.InputMsg:
-          IF M(Oberon.InputMsg).id = Oberon.track THEN
-            Oberon.DrawMouseArrow(M(Oberon.InputMsg).X, M(Oberon.InputMsg).Y)
-          END
-      | StepMsg: Steps(F)
-      | RestoreMsg: Restore(F)
-      | Oberon.CopyMsg: Oberon.Remove(T); NEW(F1); F1^ := F^; M.F := F1
-      | MenuViewers.ModifyMsg:
-        IF (M.Y # F.Y) OR (M.H # F.H) THEN F.Y := M.Y; F.H := M.H; Restore(F) END
+    WITH F: Frame DO
+      IF M IS Oberon.InputMsg THEN
+        WITH M: Oberon.InputMsg DO
+          IF M.id = Oberon.track THEN Oberon.DrawMouseArrow(M.X, M.Y) END
+        END
+      ELSIF M IS StepMsg THEN Steps(F)
+      ELSIF M IS RestoreMsg THEN Restore(F)
+      ELSIF M IS Oberon.CopyMsg THEN
+        WITH M: Oberon.CopyMsg DO Oberon.Remove(T); NEW(F1); F1^ := F^; M.F := F1 END
+      ELSIF M IS MenuViewers.ModifyMsg THEN
+        WITH M: MenuViewers.ModifyMsg DO
+          IF (M.Y # F.Y) OR (M.H # F.H) THEN F.Y := M.Y; F.H := M.H; Restore(F) END
+        END
       END
     END
   END Handle;
 
   PROCEDURE Step*;
-    VAR k: INTEGER; M: StepMsg;
+    VAR k: LONGINT; M: StepMsg;
   BEGIN
     IF Oberon.Par.vwr.dsc = Oberon.Par.frame THEN Steps(Oberon.Par.frame.next(Frame))
     ELSE Viewers.Broadcast(M)
@@ -73,7 +75,7 @@ MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
   END Step;
 
   PROCEDURE Open*;
-    VAR F: Frame; V: Viewers.Viewer; X, Y: INTEGER;
+    VAR F: Frame; V: Viewers.Viewer; X, Y: LONGINT;
   BEGIN NEW(F); F.handle := Handle;
     Oberon.AllocateUserViewer(Oberon.Par.vwr.X, X, Y);
     V := MenuViewers.New(
