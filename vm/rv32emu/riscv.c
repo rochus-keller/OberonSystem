@@ -5,15 +5,15 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
 #include "common.h"
 
 #if RV32_HAS(SYSTEM_MMIO)
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <termios.h>
 #include "dtc/libfdt/libfdt.h"
 #endif
@@ -23,9 +23,12 @@
 #define FILENO(x) fileno(x)
 #else
 #define FILENO(x) _fileno(x)
+/* MinGW already provides these in its io.h */
+#ifndef STDIN_FILENO
 #define STDIN_FILENO FILENO(stdin)
 #define STDOUT_FILENO FILENO(stdout)
 #define STDERR_FILENO FILENO(stderr)
+#endif
 #endif
 
 #if defined(__EMSCRIPTEN__)

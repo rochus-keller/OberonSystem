@@ -1,4 +1,16 @@
+param win_sdl_dir = ../SDL2
 
+let mtconf : Config {
+    .cflags = [ "/O2" "/MT" ]
+}
+
+if (build_mode == `optimized) && (target_toolchain == `msvc) {
+    set_defaults(target_toolchain,mtconf)
+}
+
+let sdl : Config {
+
+}
 
 let config : Config {
     .include_dirs += [ . ./rv32emu ./softfloat/include ./softfloat/RISCV ]
@@ -34,14 +46,21 @@ let config : Config {
         "SOFTFLOAT_ROUND_ODD"
         "SOFTFLOAT_FAST_INT64"
         "SOFTFLOAT_FAST_DIV64TO32"
-        
-        "INLINE=static inline"
     ]
     if build_mode == `debug {
         .defines += "_DEBUG"
     }
     if target_toolchain == `gcc {
-        .cflags += [ "-Wall" "-Wno-unused-parameter" "-Wno-unused-function" "-Wno-reorder" "-Wno-switch" "-Wno-unused-label" ]
+        .cflags += [ "-Wall" "-Wno-unused-parameter" "-Wno-unused-function" 
+		"-Wno-switch" "-Wno-unused-label" ]
+    }
+    if target_os == `win32 {
+        .include_dirs += [ win_sdl_dir + ./include ]
+        .lib_dirs += [ win_sdl_dir + ./lib ]
+    }
+    if target_toolchain == `msvc {
+        .cflags_c += [ "/std:c11" ]
+        .defines += [ "_CRT_SECURE_NO_WARNINGS" ]
     }
 }
 
@@ -110,5 +129,13 @@ let rv32vm ! : Executable {
         ./ScreenSdl.c
 	]
     .deps += [ softfloat rv32emu ]
-	.lib_names += [ "SDL2" ]
+    if target_os == `win32 {
+        if target_toolchain == `gcc {
+            .lib_names += [ "mingw32" "SDL2main" "SDL2" ]
+        } else {
+            .lib_names += [ "SDL2main" "SDL2" "shell32" ]
+        }
+    } else {
+        .lib_names += [ "SDL2" "m" ]
+    }
 }

@@ -108,6 +108,7 @@ Added additional apps, see readme in corresponding subdirectory.
 So far, the following version is available
 
 - [Linux x64](http://software.rochus-keller.ch/rv32_oberonsystem_linux_x64.tar.gz)
+- [Windows x86](http://software.rochus-keller.ch/rv32_oberonsystem_win32_x86.zip)
 
 Note that the included po.bin and disk.img files work on all platforms. Only the rv32vm executable is
 platform dependent. If you therefore just want to build the vm on another platform, you can reuse the other files.
@@ -121,8 +122,16 @@ There is a build.sh in the vm subdirectory which has to be run first. Then the b
 - `./build.sh link` to build and link the system without creating the disk nor running it
 - `./build.sh` just compile all Oberon modules and stop
 
-The build scripts were implemented and tested on Debian Bookworm Linux. There are also qmake (vm.pro) and a BUSY projects which 
-are likely to work on Windows and macOS as well, but they have only been tested on Linux so far.
+The build scripts were implemented and tested on Debian Bookworm Linux. 
+
+There is also a qmake (vm.pro) project to build the VM which 
+is likely to work on macOS as well, but it has only been tested on Linux so far.
+
+The VM can also be built using the [BUSY build system](https://github.com/rochus-keller/BUSY);
+it only requires a C99 compiler and SDL2 and has successfully been tested on Linux and Windows. 
+An SDL2 development package matching your toolchain [has to be downloaded](https://github.com/libsdl-org/SDL/releases). 
+Use `-P win_sdl_dir=<path>` with path pointing to the root of the SDL2 directory (where `SDL2/include` and `SDL2/lib` exist).
+Run the system on Windows with `rv32vm.exe --base 0x0 --disk disk.img po.bin`
 
 ### Credits
 
