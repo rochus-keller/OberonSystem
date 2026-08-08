@@ -464,6 +464,77 @@ static void makeElf(const char* image, const char* elf, uint32_t base)
     free(buf);
 }
 
+static uint32_t rd32(const uint8_t* p)
+{
+    return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static uint16_t rd16(const uint8_t* p)
+{
+    return (uint16_t)(p[0] | (p[1] << 8));
+}
+
+static void wr32(uint8_t* p, uint32_t v)
+{
+    p[0] = v & 0xFF; p[1] = (v >> 8) & 0xFF; p[2] = (v >> 16) & 0xFF; p[3] = (v >> 24) & 0xFF;
+}
+
+/* JAL x0, imm, i.e. an unconditional jump relative to the instruction */
+static uint32_t jal(int32_t imm)
+{
+    const uint32_t u = (uint32_t)imm;
+    return ((u >> 20 & 1) << 31) | ((u >> 1 & 0x3FF) << 21) | ((u >> 11 & 1) << 20) |
+           ((u >> 12 & 0xFF) << 12) | 0x6F;
+}
+
+static void readElf(const char* path, uint32_t* entry, uint32_t* memEnd)
+{
+    uint8_t hdr[0x34];
+    uint32_t phoff, i;
+    uint16_t phentsize, phnum;
+    FILE* f = fopen(path, "rb");
+
+    if( f == NULL )
+    {
+        fprintf(stderr, "cannot open %s\n", path);
+        exit(1);
+    }
+    if( fread(hdr, 1, sizeof(hdr), f) != sizeof(hdr) ||
+        memcmp(hdr, "\177ELF\1\1\1", 7) != 0 )
+    {
+        fprintf(stderr, "%s is not a 32 bit little endian ELF file\n", path);
+        exit(1);
+    }
+    *entry = rd32(hdr + 0x18);
+    phoff = rd32(hdr + 0x1C);
+    phentsize = rd16(hdr + 0x2A);
+    phnum = rd16(hdr + 0x2C);
+
+    *memEnd = 0;
+    for( i = 0; i < phnum; i++ )
+    {
+        uint8_t ph[0x20];
+        if( fseek(f, (long)(phoff + i * phentsize), SEEK_SET) != 0 ||
+            fread(ph, 1, sizeof(ph), f) != sizeof(ph) )
+        {
+            fprintf(stderr, "%s is truncated\n", path);
+            exit(1);
+        }
+        if( rd32(ph) != 1 ) /* PT_LOAD */
+            continue;
+        if( rd32(ph + 8) + rd32(ph + 20) > *memEnd )
+            *memEnd = rd32(ph + 8) + rd32(ph + 20); /* vaddr + memsz */
+    }
+    fclose(f);
+    if( *memEnd == 0 )
+    {
+        fprintf(stderr, "no loadable segment in %s\n", path);
+        exit(1);
+    }
+    /* the heap starts after the uninitialized data, which the machine zeroes */
+    *memEnd = (*memEnd + 31) & ~31u;
+}
+
 static volatile int interrupted = 0;
 
 static void onInterrupt(int sig)
@@ -477,6 +548,7 @@ static void usage(const char* prog)
     fprintf(stderr,
             "usage: %s [options] <boot image>\n"
             "  --base <hex>    load address of the image (default 1000)\n"
+            "  --elf           the file is an ELF executable, not a raw image\n"
             "  --disk <file>   disk image served as SD card\n"
             "  --noscreen      run without display, for the inner core\n",
             prog);
@@ -489,6 +561,8 @@ int main(int argc, char** argv)
     const char* diskFile = NULL;
     uint32_t base = 0x1000;
     int noScreen = 0;
+    int elfMode = 0;
+    uint32_t entry, memEnd = 0;
     char elfFile[256];
     vm_attr_t attr;
     riscv_io_t io;
@@ -498,6 +572,8 @@ int main(int argc, char** argv)
     {
         if( strcmp(argv[i], "--base") == 0 && i + 1 < argc )
             base = (uint32_t)strtoul(argv[++i], NULL, 16);
+        else if( strcmp(argv[i], "--elf") == 0 )
+            elfMode = 1;
         else if( strcmp(argv[i], "--disk") == 0 && i + 1 < argc )
             diskFile = argv[++i];
         else if( strcmp(argv[i], "--noscreen") == 0 )
@@ -510,8 +586,16 @@ int main(int argc, char** argv)
     if( imageFile == NULL )
         usage(argv[0]);
 
-    snprintf(elfFile, sizeof(elfFile), "%s.elf", imageFile);
-    makeElf(imageFile, elfFile, base);
+    if( elfMode )
+    {
+        snprintf(elfFile, sizeof(elfFile), "%s", imageFile);
+        readElf(elfFile, &entry, &memEnd);
+        base = entry;
+    }else
+    {
+        snprintf(elfFile, sizeof(elfFile), "%s.elf", imageFile);
+        makeElf(imageFile, elfFile, base);
+    }
 
     memset(&attr, 0, sizeof(attr));
     attr.mem_size = RAM_SIZE;
@@ -529,6 +613,18 @@ int main(int argc, char** argv)
     }
     ram = attr.mem->mem_base;
     ramSize = (uint32_t)attr.mem->mem_size;
+
+    if( elfMode )
+    {
+        /* the boot header the raw image carries in its first 32 bytes; the boot
+           linker leaves this area free, an ELF has its own header there */
+        memset(ram, 0, 32);
+        wr32(ram, jal((int32_t)entry));
+        wr32(ram + 8, memEnd);
+        wr32(ram + 16, DISPLAY_BASE - 16); /* the RAM ends at the frame buffer, as in the image */
+        printf("%s: entry %08X, heap origin %08X, memory limit %08X\n",
+               imageFile, entry, memEnd, rd32(ram + 16));
+    }
 
     memset(&io, 0, sizeof(io));
     io.mem_ifetch = memIfetch;

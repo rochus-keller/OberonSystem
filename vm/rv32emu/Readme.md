@@ -13,4 +13,5 @@ Changes:
   C99 build on a recent GCC.
 - Updated SoftFloat path in riscv.h
 - Added common.h directly to the files depending on it instead via compiler option
+- A few fixes to get rid of unused Linux includes to allow Windows builds
 
