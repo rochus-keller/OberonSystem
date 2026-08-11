@@ -37,12 +37,16 @@ enum { EVT_MOUSE_DOWN = 2, EVT_MOUSE_UP = 3 };
 enum { BTN_LEFT = 1, BTN_MIDDLE = 2, BTN_RIGHT = 3 };
 
 enum { RAM_SIZE = 0x100000 };   /* 1 MByte, as on the RISC-5 computer */
+enum { DISPLAY_GAP = RAM_SIZE - DISPLAY_BASE }; /* frame buffer and I/O area on top of the RAM */
 enum { CYCLES_PER_SLICE = 20000 };
 enum { STACK_SIZE = 0x8000 };   /* Kernel.stackSize; the stack lies between the
                                    image and the heap and grows down */
 
 static uint8_t* ram = NULL;
 static uint32_t ramSize = 0;
+/* the frame buffer sits at the top of the RAM, as on the RISC-5 computer; with more
+   RAM than 1 MByte it moves up with it, and Display derives its base from word 16 */
+static uint32_t displayBase = DISPLAY_BASE;
 static riscv_t* rv = NULL;
 static int halted = 0;
 
@@ -59,7 +63,7 @@ static int dirtyLo = DISPLAY_HEIGHT, dirtyHi = -1;
 
 static void markDirty(uint32_t adr, uint32_t len)
 {
-    const uint32_t off = adr - DISPLAY_BASE;
+    const uint32_t off = adr - displayBase;
     const int lo = (int)(off / DISPLAY_SPAN);
     const int hi = (int)((off + len - 1) / DISPLAY_SPAN);
     if( lo < dirtyLo )
@@ -70,7 +74,7 @@ static void markDirty(uint32_t adr, uint32_t len)
 
 static int isDisplay(uint32_t adr)
 {
-    return adr >= DISPLAY_BASE && adr < DISPLAY_BASE + DISPLAY_LEN;
+    return adr >= displayBase && adr < displayBase + DISPLAY_LEN;
 }
 
 /* the keyboard is a byte FIFO; the screen adapter delivers PS/2 set 2 codes */
@@ -487,7 +491,7 @@ static uint32_t jal(int32_t imm)
            ((u >> 12 & 0xFF) << 12) | 0x6F;
 }
 
-static void readElf(const char* path, uint32_t* entry, uint32_t* memEnd)
+static void readElf(const char* path, uint32_t* entry, uint32_t* memEnd, uint32_t* dataOrg)
 {
     uint8_t hdr[0x34];
     uint32_t phoff, i;
@@ -511,6 +515,7 @@ static void readElf(const char* path, uint32_t* entry, uint32_t* memEnd)
     phnum = rd16(hdr + 0x2C);
 
     *memEnd = 0;
+    *dataOrg = 0xFFFFFFFFu;
     for( i = 0; i < phnum; i++ )
     {
         uint8_t ph[0x20];
@@ -524,6 +529,8 @@ static void readElf(const char* path, uint32_t* entry, uint32_t* memEnd)
             continue;
         if( rd32(ph + 8) + rd32(ph + 20) > *memEnd )
             *memEnd = rd32(ph + 8) + rd32(ph + 20); /* vaddr + memsz */
+        if( (rd32(ph + 24) & 2) && rd32(ph + 8) < *dataOrg ) /* PF_W */
+            *dataOrg = rd32(ph + 8);
     }
     fclose(f);
     if( *memEnd == 0 )
@@ -533,6 +540,9 @@ static void readElf(const char* path, uint32_t* entry, uint32_t* memEnd)
     }
     /* the heap starts after the uninitialized data, which the machine zeroes */
     *memEnd = (*memEnd + 31) & ~31u;
+    if( *dataOrg == 0xFFFFFFFFu )
+        *dataOrg = *memEnd;
+    *dataOrg &= ~3u;
 }
 
 static volatile int interrupted = 0;
@@ -550,6 +560,7 @@ static void usage(const char* prog)
             "  --base <hex>    load address of the image (default 1000)\n"
             "  --elf           the file is an ELF executable, not a raw image\n"
             "  --disk <file>   disk image served as SD card\n"
+            "  --ram <MB>      RAM in MByte (default 1, as on the RISC-5 computer)\n"
             "  --noscreen      run without display, for the inner core\n",
             prog);
     exit(1);
@@ -562,7 +573,7 @@ int main(int argc, char** argv)
     uint32_t base = 0x1000;
     int noScreen = 0;
     int elfMode = 0;
-    uint32_t entry, memEnd = 0;
+    uint32_t entry, memEnd = 0, dataOrg = 0, ramWanted = RAM_SIZE;
     char elfFile[256];
     vm_attr_t attr;
     riscv_io_t io;
@@ -576,6 +587,8 @@ int main(int argc, char** argv)
             elfMode = 1;
         else if( strcmp(argv[i], "--disk") == 0 && i + 1 < argc )
             diskFile = argv[++i];
+        else if( strcmp(argv[i], "--ram") == 0 && i + 1 < argc )
+            ramWanted = (uint32_t)strtoul(argv[++i], NULL, 10) * 0x100000u;
         else if( strcmp(argv[i], "--noscreen") == 0 )
             noScreen = 1;
         else if( argv[i][0] == '-' )
@@ -589,7 +602,7 @@ int main(int argc, char** argv)
     if( elfMode )
     {
         snprintf(elfFile, sizeof(elfFile), "%s", imageFile);
-        readElf(elfFile, &entry, &memEnd);
+        readElf(elfFile, &entry, &memEnd, &dataOrg);
         base = entry;
     }else
     {
@@ -598,7 +611,10 @@ int main(int argc, char** argv)
     }
 
     memset(&attr, 0, sizeof(attr));
-    attr.mem_size = RAM_SIZE;
+    if( ramWanted < RAM_SIZE )
+        ramWanted = RAM_SIZE;
+    displayBase = ramWanted - DISPLAY_GAP;
+    attr.mem_size = ramWanted;
     attr.stack_size = 0;
     attr.cycle_per_step = CYCLES_PER_SLICE;
     attr.allow_misalign = true;
@@ -621,9 +637,10 @@ int main(int argc, char** argv)
         memset(ram, 0, 32);
         wr32(ram, jal((int32_t)entry));
         wr32(ram + 8, memEnd);
-        wr32(ram + 16, DISPLAY_BASE - 16); /* the RAM ends at the frame buffer, as in the image */
-        printf("%s: entry %08X, heap origin %08X, memory limit %08X\n",
-               imageFile, entry, memEnd, rd32(ram + 16));
+        wr32(ram + 12, dataOrg);  /* start of the writable data, the root area of the collector */
+        wr32(ram + 16, displayBase - 16); /* the RAM ends at the frame buffer, as in the image */
+        printf("%s: entry %08X, data %08X, heap origin %08X, memory limit %08X\n",
+               imageFile, entry, dataOrg, memEnd, rd32(ram + 16));
     }
 
     memset(&io, 0, sizeof(io));
@@ -645,7 +662,7 @@ int main(int argc, char** argv)
 
     if( !noScreen )
     {
-        if( !Screen$Open(ram + DISPLAY_BASE, DISPLAY_LEN,
+        if( !Screen$Open(ram + displayBase, DISPLAY_LEN,
                          DISPLAY_WIDTH, DISPLAY_HEIGHT, 1 + 2) ) /* LSB first, bottom up */
         {
             fprintf(stderr, "cannot open the screen\n");
