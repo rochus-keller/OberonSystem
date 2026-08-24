@@ -1,0 +1,220 @@
+module Draw [level=5] // NW 29.6.88 / 12.11.94 / 18.11.2013 / RK 2026
+
+import Files, Fonts, Viewers, Texts, Oberon, TextFrames, MenuViewers, Graphics, GraphicFrames
+
+const
+  Menu = "System.Close  System.Copy  System.Grow  Draw.Delete  Draw.Ticks  Draw.Restore  Draw.Store"
+
+var
+  W: Texts.Writer
+
+(*Exported commands:
+Open, Delete,
+SetWidth, ChangeColor, ChangeWidth, ChangeFont,
+Store, Print, Macro, Ticks, Restore*)
+
+procedure Open*()
+  var X, Y, beg, end_, t: int32
+    G: Graphics.Graph
+    F: GraphicFrames.Frame
+    V: Viewers.Viewer
+    S: Texts.Scanner
+    text: Texts.Text
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if (S.class = Texts.Char) & (S.c = "^") then
+    Oberon.GetSelection(@text, @beg, @end_, @t)
+    if t >= 0 then
+      Texts.OpenScanner(@S, text, beg)
+      Texts.Scan(@S)
+    end
+  end
+
+  if S.class = Texts.Name then
+    newgc(G)
+    Graphics.Open(G, @S.s)
+    newgc(F)
+    GraphicFrames.Open(F, G)
+    Oberon.AllocateUserViewer(Oberon.Par.vwr.X, @X, @Y)
+    V := MenuViewers.New(TextFrames.NewMenu(@S.s, Menu), F, TextFrames.menuH, X, Y)
+  end
+end Open
+
+procedure Delete*()
+  var F: GraphicFrames.Frame
+begin
+  if Oberon.Par.frame = Oberon.Par.vwr.dsc then
+    F := Oberon.Par.vwr.dsc.next(GraphicFrames.Frame)
+    GraphicFrames.Erase(F)
+    Graphics.Delete(F.graph)
+  end
+end Delete
+
+procedure GetArg(S: ^Texts.Scanner)
+  var T: Texts.Text
+    beg, end_, time: int32
+begin
+  Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(S)
+  if (S.class = Texts.Char) & (S.c = "^") then
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.OpenScanner(S, T, beg)
+      Texts.Scan(S)
+    end
+  end
+end GetArg
+
+procedure SetWidth*()
+  var S: Texts.Scanner
+begin
+  GetArg(@S)
+  if (S.class = Texts.Int) & (S.i > 0) & (S.i < 7) then
+    Graphics.SetWidth(S.i)
+  end
+end SetWidth
+
+procedure ChangeColor*()
+  var S: Texts.Scanner
+    CM: Graphics.ColorMsg
+begin
+  GetArg(@S)
+  if S.class = Texts.Int then
+    CM.col := S.i mod 16
+    GraphicFrames.Change(GraphicFrames.Selected(), @CM)
+  end
+end ChangeColor
+
+procedure ChangeWidth*()
+  var S: Texts.Scanner
+    WM: Graphics.WidMsg
+begin
+  GetArg(@S)
+  if S.class = Texts.Int then
+    WM.w := S.i
+    GraphicFrames.Change(GraphicFrames.Selected(), @WM)
+  end
+end ChangeWidth
+
+procedure ChangeFont*()
+  var S: Texts.Scanner
+    FM: Graphics.FontMsg
+begin
+  GetArg(@S)
+  if S.class = Texts.Name then
+    FM.fnt := Fonts.This(@S.s)
+    if FM.fnt # nil then
+      GraphicFrames.Change(GraphicFrames.Selected(), @FM)
+    end
+  end
+end ChangeFont
+
+procedure Redraw(Q: boolean)
+  var v: Viewers.Viewer
+    G: GraphicFrames.Frame
+begin
+  if Oberon.Par.frame = Oberon.Par.vwr.dsc then
+    v := Oberon.Par.vwr
+  else
+    v := Oberon.MarkedViewer()
+  end
+  if (v # nil) & (v.dsc # nil) & (v.dsc.next is GraphicFrames.Frame) then
+    G := v.dsc.next(GraphicFrames.Frame)
+    G.ticked := Q or ~G.ticked
+    GraphicFrames.Restore(G)
+  end
+end Redraw
+
+procedure Ticks*()
+begin
+  Redraw(false)
+end Ticks
+
+procedure Restore*()
+begin
+  Redraw(true)
+end Restore
+
+procedure Backup(name: pointer to array of char)
+  var res, i: int32
+    ch: char
+    bak: array 32 of char
+begin
+  i := 0
+  ch := name[0]
+  while ch > 0X do
+    bak[i] := ch
+    inc(i)
+    ch := name[i]
+  end
+  if i < 28 then
+    bak[i] := "."
+    bak[i + 1] := "B"
+    bak[i + 2] := "a"
+    bak[i + 3] := "k"
+    bak[i + 4] := 0X
+    Files.Rename(name, @bak, @res)
+  end
+end Backup
+
+procedure Store*()
+  var S: Texts.Scanner
+    Menu: TextFrames.Frame
+    G: GraphicFrames.Frame
+    v: Viewers.Viewer
+begin
+  if Oberon.Par.frame = Oberon.Par.vwr.dsc then
+    Menu := Oberon.Par.vwr.dsc(TextFrames.Frame)
+    G := Menu.next(GraphicFrames.Frame)
+    Texts.OpenScanner(@S, Menu.text, 0)
+    Texts.Scan(@S)
+    if S.class = Texts.Name then
+      Texts.WriteString(@W, @S.s)
+      Texts.WriteString(@W, " storing")
+      Texts.WriteLn(@W)
+      Texts.Append(Oberon.Log, W.buf)
+      Backup(@S.s)
+      GraphicFrames.Store(G, @S.s)
+    end
+  else
+    Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+    Texts.Scan(@S)
+    if S.class = Texts.Name then
+      v := Oberon.MarkedViewer()
+      if (v.dsc # nil) & (v.dsc.next is GraphicFrames.Frame) then
+        G := v.dsc.next(GraphicFrames.Frame)
+        Texts.WriteString(@W, @S.s)
+        Texts.WriteString(@W, " storing")
+        Texts.WriteLn(@W)
+        Texts.Append(Oberon.Log, W.buf)
+        Backup(@S.s)
+        GraphicFrames.Store(G, @S.s)
+      end
+    end
+  end
+end Store
+
+procedure Macro*()
+  var S: Texts.Scanner
+    T: Texts.Text
+    time, beg, end_: int32
+    Lname: array 32 of char
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Name then
+    copy(@Lname, @S.s, 32)
+    Texts.Scan(@S)
+    if S.class = Texts.Name then
+      GraphicFrames.Macro(@Lname, @S.s)
+    end
+  end
+end Macro
+
+begin
+  Texts.OpenWriter(@W)
+  Texts.WriteString(@W, "Draw - NW 9.8.2013")
+  Texts.WriteLn(@W)
+  Texts.Append(Oberon.Log, W.buf)
+end Draw.

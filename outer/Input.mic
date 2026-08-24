@@ -1,0 +1,132 @@
+module Input [level=4] // NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-4 / RK 2026
+
+import SYS
+
+const
+  msAdr = 0FFFFFFD8H
+  kbdAdr = 0FFFFFFDCH
+
+type 
+  AnyPtr = pointer to byte // helper type for Oberon addresses and SYSTEM.PTR
+  CharPtr = pointer to char // helper type for a variable reinterpreted by SYSTEM.VAL
+  Int32Ptr = pointer to int32 // helper type for a variable reinterpreted by SYSTEM.VAL
+
+var
+  kbdCode: char // last keyboard code read
+  Recd: boolean
+  Up: boolean
+  Shift: boolean
+  Ctrl: boolean
+  Ext: boolean
+  KTabAdr: AnyPtr // keyboard code translation table
+  MW: int32 // mouse limits and coords
+  MH: int32
+  MX: int32
+  MY: int32
+  MK: set // mouse keys
+  KTab: array 256 of byte
+
+(*FIFO implemented in hardware, because every read must be handled,
+including tracking the state of the Shift and Ctrl keys*)
+
+procedure Peek()
+  var w: int32
+begin
+  w := Int32Ptr{msAdr}^
+  if ((w div 268435456 mod 2) # 0) then
+    // OP2 relocates SYSTEM.BIT of a constant address
+    kbdCode := CharPtr{kbdAdr}^
+    if ord(kbdCode) = 240 then
+      Up := true
+    elsif ord(kbdCode) = 224 then
+      Ext := true
+    else
+      if (ord(kbdCode) = 18) or (ord(kbdCode) = 89) then
+        // shift
+        Shift := ~Up
+      elsif ord(kbdCode) = 20 then
+        // ctrl
+        Ctrl := ~Up
+      elsif ~Up then
+        Recd := true // real key going down
+      end
+      Up := false
+      Ext := false
+    end
+  end
+end Peek
+
+procedure Available*(): int32
+  var n: int32
+begin
+  Peek()
+  if Recd then
+    n := 1
+  else
+    n := 0
+  end
+  return n
+end Available
+
+procedure Read*(ch: ^char)
+begin
+  while ~Recd do
+    Peek()
+  end
+  if Shift or Ctrl then
+    kbdCode := chr(ord(kbdCode) + 128) // ctrl implies shift
+  end
+  // ch := kbdTab[kbdCode];
+  ch^ := cast(CharPtr, ptroff(KTabAdr, +ord(kbdCode)))^ 
+  if Ctrl then
+    ch^ := chr(ord(ch^) mod 32)
+  end
+  Recd := false
+end Read
+
+procedure Mouse*(keys: ^set; x, y: ^int32)
+  var w: int32
+begin
+  w := Int32Ptr{msAdr}^
+  keys^ := bset(usig(w div 16777216 mod 8))
+  x^ := w mod 1024
+  y^ := w div 4096 mod 1024
+  if y^ >= MH then
+    y^ := MH - 1
+  end
+end Mouse
+
+procedure SetMouseLimits*(w, h: int32)
+begin
+  MW := w
+  MH := h
+end SetMouseLimits
+
+procedure Init*()
+begin
+  Up := false
+  Shift := false
+  Ctrl := false
+  Recd := false
+  KTab := $00 00 00 00 00 1A 00 00  00 00 00 00 00 09 60 00
+           00 00 00 00 00 71 31 00  00 00 7A 73 61 77 32 00
+           00 63 78 64 65 34 33 00  00 20 76 66 74 72 35 00
+           00 6E 62 68 67 79 36 00  00 00 6D 6A 75 37 38 00
+           00 2C 6B 69 6F 30 39 00  00 2E 2F 6C 3B 70 2D 00
+           00 00 27 00 5B 3D 00 00  00 00 0D 5D 00 5C 00 00
+           00 00 00 00 00 00 08 00  00 00 00 00 00 00 00 00
+           00 7F 00 00 00 00 1B 00  00 00 00 00 00 00 00 00
+           00 00 00 00 00 00 00 00  00 00 00 00 00 09 7E 00
+           00 00 00 00 00 51 21 00  00 00 5A 53 41 57 40 00
+           00 43 58 44 45 24 23 00  00 20 56 46 54 52 25 00
+           00 4E 42 48 47 59 5E 00  00 00 4D 4A 55 26 2A 00
+           00 3C 4B 49 4F 29 28 00  00 3E 3F 4C 3A 50 5F 00
+           00 00 22 00 7B 2B 00 00  00 00 0D 7D 00 7C 00 00
+           00 00 00 00 00 00 08 00  00 00 00 00 00 00 00 00
+           00 7F 00 00 00 00 1B 00  00 00 00 00 00 00 00 00$
+  KTabAdr := cast(AnyPtr, @KTab)
+end Init
+
+begin
+  Init()
+end Input.

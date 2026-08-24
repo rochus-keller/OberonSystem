@@ -1,0 +1,851 @@
+module Files [level=5] // NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013 / RK 2026
+(*A file consists of a sequence of pages. The first page
+contains the header. Part of the header is the page table, an array
+of disk addresses to the pages. A file is referenced through riders.
+A rider indicates a current position and refers to a file*)
+
+import SYS, Kernel, FileDir
+
+const
+  MaxBufs = 4
+  HS = FileDir.HeaderSize
+  SS = FileDir.SectorSize
+  STS = FileDir.SecTabSize
+  XS = FileDir.IndexSize
+
+type
+  AnyPtr = pointer to byte // helper type for Oberon addresses and SYSTEM.PTR
+  BytesPtr = pointer to array of byte // helper type for VAR ARRAY OF SYSTEM.BYTE parameters
+  AnyPtrPtr = pointer to AnyPtr // helper type for a variable reinterpreted by SYSTEM.VAL
+  Int32Ptr = pointer to int32 // helper type for a variable reinterpreted by SYSTEM.VAL
+
+  DiskAdr = int32
+  File* = pointer to FileDesc
+  Buffer = pointer to BufferRecord
+  Index = pointer to IndexRecord
+
+  Rider* = record
+    eof*: boolean
+    res*: int32
+    file: File
+    apos: int32
+    bpos: int32
+    buf: Buffer
+  end
+
+  FileDesc = record
+    next: AnyPtr // list of files invisible to the GC
+    nofbufs: int32
+    aleng: int32
+    bleng: int32
+    modH: boolean
+    registered: boolean
+    firstbuf: Buffer
+    sechint: int32
+    name: FileDir.FileName
+    date: int32
+    ext: array FileDir.ExTabSize of Index
+    sec: FileDir.SectorTable
+  end
+
+  BufferRecord = record
+    apos: int32
+    lim: int32
+    mod_: boolean
+    next: Buffer
+    data: FileDir.DataSector
+  end
+
+  IndexRecord = record
+    adr: int32
+    mod_: boolean
+    sec: FileDir.IndexSector
+  end
+
+(*aleng * SS + bleng = length (including header)
+apos * SS + bpos = current position
+0 <= bpos <= lim <= SS
+0 <= apos <= aleng < PgTabSize
+(apos < aleng) & (lim = SS) OR (apos = aleng) *)
+
+var
+  root: AnyPtr // File
+
+// list of open files
+
+// Wirth's original passes a file header or an index sector to Kernel's untyped
+// VAR ARRAY OF SYSTEM.BYTE parameter; in Micron the reinterpretation happens once, here.
+
+procedure getHeader(adr: int32; p: ^FileDir.FileHeader) inline
+begin
+  Kernel.GetSector(adr, cast(BytesPtr, p))
+end getHeader
+
+procedure putHeader(adr: int32; p: ^FileDir.FileHeader) inline
+begin
+  Kernel.PutSector(adr, cast(BytesPtr, p))
+end putHeader
+
+procedure getIndex(adr: int32; p: ^FileDir.IndexSector) inline
+begin
+  Kernel.GetSector(adr, cast(BytesPtr, p))
+end getIndex
+
+procedure putIndex(adr: int32; p: ^FileDir.IndexSector) inline
+begin
+  Kernel.PutSector(adr, cast(BytesPtr, p))
+end putIndex
+
+procedure Check(const s: ^array of char; name: pointer to array of char; res: ^int32)
+  var i: int32
+    ch: char
+begin
+  ch := s[0]
+  i := 0
+  if (ch >= "A") & (ch <= "Z") or (ch >= "a") & (ch <= "z") then
+    repeat
+      name[i] := ch
+      inc(i)
+      ch := s[i]
+    until ~((ch >= "0") & (ch <= "9") or (ch >= "A") & (ch <= "Z") or (ch >= "a") & 
+            (ch <= "z") or (ch = ".")) or (i = FileDir.FnLength)
+
+    if i = FileDir.FnLength then
+      res^ := 4
+    elsif ch = 0X then
+      res^ := 0
+      while i < FileDir.FnLength do
+        name[i] := 0X
+        inc(i)
+      end
+    else
+      res^ := 5
+    end
+  elsif ch = 0X then
+    name[0] := 0X
+    res^ := -1
+  else
+    res^ := 3
+  end
+end Check
+
+procedure Old*(const name: pointer to array of char): File
+  var i, k, res: int32
+    f: File
+    header: int32
+    buf: Buffer
+    F: FileDir.FileHd
+    namebuf: FileDir.FileName
+    inxpg: Index
+begin
+  f := nil
+  Check(name, @namebuf, @res)
+  if res = 0 then
+    FileDir.Search(@namebuf, @header)
+    if header # 0 then
+      f := cast(File, root)
+      while (f # nil) & (f.sec[0] # header) do
+        f := cast(File, f.next)
+      end
+      if f = nil then // file not yet present
+        newgc(buf)
+        buf.apos := 0
+        buf.next := buf
+        buf.mod_ := false
+        F := cast(FileDir.FileHd, @buf.data)
+        Kernel.GetSector(header, @buf.data)
+        assert(F.mark = FileDir.HeaderMark)
+        newgc(f)
+        f.aleng := F.aleng
+        f.bleng := F.bleng
+        f.date := F.date
+        if f.aleng = 0 then
+          buf.lim := f.bleng
+        else
+          buf.lim := SS
+        end
+        f.firstbuf := buf
+        f.nofbufs := 1
+        copy(@f.name, @namebuf, FileDir.FnLength)
+        f.registered := true
+        f.sec := F.sec
+        k := (f.aleng + (XS - STS)) div XS
+        i := 0
+        while i < k do
+          newgc(inxpg)
+          inxpg.adr := F.ext[i]
+          inxpg.mod_ := false
+          getIndex(inxpg.adr, @inxpg.sec)
+          f.ext[i] := inxpg
+          inc(i)
+        end
+        while i < FileDir.ExTabSize do
+          f.ext[i] := nil
+          inc(i)
+        end
+        f.sechint := header
+        f.modH := false
+        f.next := root
+        root := cast(AnyPtr, f)
+      end
+    end
+  end
+  return f
+end Old
+
+procedure New*(const name: pointer to array of char): File
+  var i, res: int32
+    f: File
+    buf: Buffer
+    F: FileDir.FileHd
+    namebuf: FileDir.FileName
+begin
+  f := nil
+  Check(name, @namebuf, @res)
+  if res <= 0 then
+    newgc(buf)
+    buf.apos := 0
+    buf.mod_ := true
+    buf.lim := HS
+    buf.next := buf
+    F := cast(FileDir.FileHd, @buf.data)
+    F.mark := FileDir.HeaderMark
+    F.aleng := 0
+    F.bleng := HS
+    copy(@F.name, @namebuf, FileDir.FnLength)
+    F.date := Kernel.Clock()
+    newgc(f)
+    f.aleng := 0
+    f.bleng := HS
+    f.modH := true
+    f.registered := false
+    f.date := F.date
+    f.firstbuf := buf
+    f.nofbufs := 1
+    copy(@f.name, @namebuf, FileDir.FnLength)
+    f.sechint := 0
+    i := 0
+    repeat
+      f.ext[i] := nil
+      F.ext[i] := 0
+      inc(i)
+    until i = FileDir.ExTabSize
+    i := 0
+    repeat
+      f.sec[i] := 0
+      F.sec[i] := 0
+      inc(i)
+    until i = STS
+  end
+  return f
+end New
+
+procedure UpdateHeader(f: File; F: ^FileDir.FileHeader)
+  var k: int32
+begin
+  F.aleng := f.aleng
+  F.bleng := f.bleng
+  F.sec := f.sec
+  k := (f.aleng + (XS - STS)) div XS
+  while k > 0 do
+    dec(k)
+    F.ext[k] := f.ext[k].adr
+  end
+end UpdateHeader
+
+procedure ReadBuf(f: File; buf: Buffer; pos: int32)
+  var sec: int32
+begin
+  if pos < STS then
+    sec := f.sec[pos]
+  else
+    sec := f.ext[(pos - STS) div XS].sec[(pos - STS) mod XS]
+  end
+  Kernel.GetSector(sec, @buf.data)
+  if pos < f.aleng then
+    buf.lim := SS
+  else
+    buf.lim := f.bleng
+  end
+  buf.apos := pos
+  buf.mod_ := false
+end ReadBuf
+
+procedure WriteBuf(f: File; buf: Buffer)
+  var i, k, secadr: int32
+    inx: Index
+begin
+  if buf.apos < STS then
+    secadr := f.sec[buf.apos]
+    if secadr = 0 then
+      Kernel.AllocSector(f.sechint, @secadr)
+      f.modH := true
+      f.sec[buf.apos] := secadr
+      f.sechint := secadr
+    end
+    if buf.apos = 0 then
+      UpdateHeader(f, cast(FileDir.FileHd, @buf.data))
+      f.modH := false
+    end
+  else
+    i := (buf.apos - STS) div XS
+    inx := f.ext[i]
+    if inx = nil then
+      newgc(inx)
+      inx.adr := 0
+      inx.sec[0] := 0
+      f.ext[i] := inx
+      f.modH := true
+    end
+    k := (buf.apos - STS) mod XS
+    secadr := inx.sec[k]
+    if secadr = 0 then
+      Kernel.AllocSector(f.sechint, @secadr)
+      f.modH := true
+      inx.mod_ := true
+      inx.sec[k] := secadr
+      f.sechint := secadr
+    end
+  end
+  Kernel.PutSector(secadr, @buf.data)
+  buf.mod_ := false
+end WriteBuf
+
+procedure Buf(f: File; pos: int32): Buffer
+  var buf: Buffer
+begin
+  buf := f.firstbuf
+  while (buf.apos # pos) & (buf.next # f.firstbuf) do
+    buf := buf.next
+  end
+  if buf.apos # pos then
+    buf := nil
+  end
+  return buf
+end Buf
+
+procedure GetBuf(f: File; pos: int32): Buffer
+  var buf: Buffer
+begin
+  buf := f.firstbuf
+  while (buf.apos # pos) & (buf.next # f.firstbuf) do
+    buf := buf.next
+  end
+  if buf.apos # pos then
+    if f.nofbufs < MaxBufs then // allocate new buffer
+      newgc(buf)
+      buf.next := f.firstbuf.next
+      f.firstbuf.next := buf
+      inc(f.nofbufs)
+    else // reuse a buffer
+      f.firstbuf := buf
+      if buf.mod_ then
+        WriteBuf(f, buf)
+      end
+    end
+    if pos <= f.aleng then
+      ReadBuf(f, buf, pos)
+    else
+      buf.apos := pos
+      buf.lim := 0
+      buf.mod_ := false
+    end
+  end
+  return buf
+end GetBuf
+
+procedure Unbuffer(f: File)
+  var i, k: int32
+    buf: Buffer
+    inx: Index
+    head: FileDir.FileHeader
+begin
+  buf := f.firstbuf
+  repeat
+    if buf.mod_ then
+      WriteBuf(f, buf)
+    end
+    buf := buf.next
+  until buf = f.firstbuf
+  k := (f.aleng + (XS - STS)) div XS
+  i := 0
+  while i < k do
+    inx := f.ext[i]
+    inc(i)
+    if inx.mod_ then
+      if inx.adr = 0 then
+        Kernel.AllocSector(f.sechint, @inx.adr)
+        f.sechint := inx.adr
+        f.modH := true
+      end
+
+      putIndex(inx.adr, @inx.sec)
+      inx.mod_ := false
+    end
+  end
+  if f.modH then
+    getHeader(f.sec[0], @head)
+    UpdateHeader(f, @head)
+    putHeader(f.sec[0], @head)
+    f.modH := false
+  end
+end Unbuffer
+
+procedure Register*(f: File)
+begin
+  if (f # nil) & (f.name[0] # 0X) then
+    Unbuffer(f)
+    if ~f.registered then
+      FileDir.Insert(@f.name, f.sec[0])
+      f.registered := true
+      f.next := root
+      root := cast(AnyPtr, f)
+    end
+  end
+end Register
+
+procedure Close*(f: File)
+begin
+  if f # nil then
+    Unbuffer(f)
+  end
+end Close
+
+procedure Purge*(f: File)
+  var a, i, j, k: int32
+    ind: FileDir.IndexSector
+begin
+  if f # nil then
+    a := f.aleng + 1
+    f.aleng := 0
+    f.bleng := HS
+    if a <= STS then
+      i := a
+    else
+      i := STS
+      dec(a, i)
+      j := (a - 1) mod XS
+      k := (a - 1) div XS
+      while k >= 0 do
+        getIndex(f.ext[k].adr, @ind)
+        repeat
+          dec(j)
+          Kernel.FreeSector(ind[j])
+        until j = 0
+        Kernel.FreeSector(f.ext[k].adr)
+        j := XS
+        dec(k)
+      end
+    end
+    repeat
+      dec(i)
+      Kernel.FreeSector(f.sec[i])
+    until i = 0
+  end
+end Purge
+
+procedure Delete*(const name: pointer to array of char; res: ^int32)
+  var adr: int32
+    namebuf: FileDir.FileName
+begin
+  Check(name, @namebuf, res)
+  if res^ = 0 then
+    FileDir.Delete(@namebuf, @adr)
+    if adr = 0 then
+      res^ := 2
+    end
+  end
+end Delete
+
+procedure Rename*(const old, new_: pointer to array of char; res: ^int32)
+  var adr: int32
+    oldbuf, newbuf: FileDir.FileName
+    head: FileDir.FileHeader
+begin
+  Check(old, @oldbuf, res)
+  if res^ = 0 then
+    Check(new_, @newbuf, res)
+    if res^ = 0 then
+      FileDir.Delete(@oldbuf, @adr)
+      if adr # 0 then
+        FileDir.Insert(@newbuf, adr)
+        getHeader(adr, @head)
+        copy(@head.name, @newbuf, FileDir.FnLength )
+        putHeader(adr, @head)
+      else
+        res^ := 2
+      end
+    end
+  end
+end Rename
+
+procedure Length*(f: File): int32
+begin
+  return f.aleng * SS + f.bleng - HS
+end Length
+
+procedure Date*(f: File): int32
+begin
+  return f.date
+end Date
+
+// ---------------------------Read---------------------------
+
+procedure Set*(r: ^Rider; f: File; pos: int32)
+  var a, b: int32
+begin
+  r.eof := false
+  r.res := 0
+  if f # nil then
+    if pos < 0 then
+      a := 0
+      b := HS
+    elsif pos < f.aleng * SS + f.bleng - HS then
+      a := (pos + HS) div SS
+      b := (pos + HS) mod SS
+    else
+      a := f.aleng
+      b := f.bleng
+    end
+    r.file := f
+    r.apos := a
+    r.bpos := b
+    r.buf := f.firstbuf
+  else
+    r.file := nil
+  end
+end Set
+
+procedure Pos*(r: ^Rider): int32
+begin
+  return r.apos * SS + r.bpos - HS
+end Pos
+
+procedure Base*(r: ^Rider): File
+begin
+  return r.file
+end Base
+
+procedure ReadByte*(r: ^Rider; x: ^byte)
+  var buf: Buffer
+begin
+  if r.apos # r.buf.apos then
+    r.buf := GetBuf(r.file, r.apos)
+  end
+  if r.bpos < r.buf.lim then
+    x^ := r.buf.data[r.bpos]
+    inc(r.bpos)
+  elsif r.apos < r.file.aleng then
+    inc(r.apos)
+    buf := Buf(r.file, r.apos)
+    if buf = nil then
+      if r.buf.mod_ then
+        WriteBuf(r.file, r.buf)
+      end
+      ReadBuf(r.file, r.buf, r.apos)
+    else
+      r.buf := buf
+    end
+    x^ := r.buf.data[0]
+    r.bpos := 1
+  else
+    x^ := 0u1
+    r.eof := true
+  end
+end ReadByte
+
+procedure ReadBytes*(r: ^Rider; x: pointer to array of byte; n: int32)
+  var i: int32
+begin
+  i := 0 // this implementation is to be improved
+  while i < n do
+    ReadByte(r, @x[i])
+    inc(i)
+  end
+end ReadBytes
+
+procedure Read*(r: ^Rider; ch: ^char)
+  var buf: Buffer // same as ReadByte
+begin
+  if r.apos # r.buf.apos then
+    r.buf := GetBuf(r.file, r.apos)
+  end
+  if r.bpos < r.buf.lim then
+    ch^ := chr(r.buf.data[r.bpos])
+    inc(r.bpos)
+  elsif r.apos < r.file.aleng then
+    inc(r.apos)
+    buf := Buf(r.file, r.apos)
+    if buf = nil then
+      if r.buf.mod_ then
+        WriteBuf(r.file, r.buf)
+      end
+      ReadBuf(r.file, r.buf, r.apos)
+    else
+      r.buf := buf
+    end
+
+    ch^ := chr(r.buf.data[0])
+    r.bpos := 1
+  else
+    ch^ := 0X
+    r.eof := true
+  end
+end Read
+
+procedure ReadInt*(R: ^Rider; x: ^int32)
+  var x0, x1, x2, x3: byte
+begin
+  ReadByte(R, @x0)
+  ReadByte(R, @x1)
+  ReadByte(R, @x2)
+  ReadByte(R, @x3)
+  x^ := sigc(shl(x3, 24) + shl(x2, 16) + shl(x1, 8) + x0)
+end ReadInt
+
+procedure ReadSet*(R: ^Rider; s: ^set)
+begin
+  ReadInt(R, cast(Int32Ptr, s))
+end ReadSet
+
+procedure ReadReal*(R: ^Rider; x: ^real)
+begin
+  ReadInt(R, cast(Int32Ptr, x))
+end ReadReal
+
+procedure ReadString*(R: ^Rider; x: pointer to array of char; x_len: int32)
+  var i: int32
+    ch: char
+begin
+  i := 0
+  Read(R, @ch)
+  while ch # 0X do
+    if i < x_len - 1 then
+      x[i] := ch
+      inc(i)
+    end
+    Read(R, @ch)
+  end
+  x[i] := 0X
+end ReadString
+
+procedure ReadNum*(R: ^Rider; x: ^int32)
+  var n, y, k: int32
+    b: byte
+begin
+  n := 32
+  y := 0
+  ReadByte(R, @b)
+  k := +b
+  while k >= 128 do
+    y := SYS.ROT(y + k - 128, -7)
+    dec(n, 7)
+    ReadByte(R, @b)
+    k := +b
+  end
+  if n <= 4 then
+    x^ := SYS.ROT(y + k mod 16, -4)
+  else
+    // n > 4 here, so Oberon's ASH by -(n-7) is an arithmetic right shift by n-7
+    x^ := asr(SYS.ROT(y + k, -7), usig(n - 7))
+  end
+end ReadNum
+
+// ---------------------------Write---------------------------
+
+procedure NewExt(f: File)
+  var i, k: int32
+    ext: Index
+begin
+  k := (f.aleng - STS) div XS
+  newgc(ext)
+  ext.adr := 0
+  ext.mod_ := true
+  f.ext[k] := ext
+  i := XS
+  repeat
+    dec(i)
+    ext.sec[i] := 0
+  until i = 0
+end NewExt
+
+procedure WriteByte*(r: ^Rider; x: byte)
+  var f: File
+    buf: Buffer
+begin
+  if r.apos # r.buf.apos then
+    r.buf := GetBuf(r.file, r.apos)
+  end
+  if r.bpos >= r.buf.lim then
+    if r.bpos < SS then
+      inc(r.buf.lim)
+      inc(r.file.bleng)
+      r.file.modH := true
+    else
+      f := r.file
+      WriteBuf(f, r.buf)
+      inc(r.apos)
+      buf := Buf(r.file, r.apos)
+      if buf = nil then
+        if r.apos <= f.aleng then
+          ReadBuf(f, r.buf, r.apos)
+        else
+          r.buf.apos := r.apos
+          r.buf.lim := 1
+          f.aleng := f.aleng + 1
+          f.bleng := 1
+          f.modH := true
+          if (f.aleng - STS) mod XS = 0 then
+            NewExt(f)
+          end
+        end
+      else
+        r.buf := buf
+      end
+      r.bpos := 0
+    end
+  end
+  r.buf.data[r.bpos] := x
+  inc(r.bpos)
+  r.buf.mod_ := true
+end WriteByte
+
+procedure WriteBytes*(r: ^Rider; const x: pointer to array of byte; n: int32)
+  var i: int32
+begin
+  i := 0 // this implementation is to be improed
+  while i < n do
+    WriteByte(r, x[i])
+    inc(i)
+  end
+end WriteBytes
+
+procedure Write*(r: ^Rider; ch: char)
+  var f: File
+    buf: Buffer
+begin
+  // same as WriteByte
+  if r.apos # r.buf.apos then
+    r.buf := GetBuf(r.file, r.apos)
+  end
+  if r.bpos >= r.buf.lim then
+    if r.bpos < SS then
+      inc(r.buf.lim)
+      inc(r.file.bleng)
+      r.file.modH := true
+    else
+      f := r.file
+      WriteBuf(f, r.buf)
+      inc(r.apos)
+      buf := Buf(r.file, r.apos)
+      if buf = nil then
+        if r.apos <= f.aleng then
+          ReadBuf(f, r.buf, r.apos)
+        else
+          r.buf.apos := r.apos
+          r.buf.lim := 1
+          f.aleng := f.aleng + 1
+          f.bleng := 1
+          f.modH := true
+          if (f.aleng - STS) mod XS = 0 then
+            NewExt(f)
+          end
+        end
+      else
+        r.buf := buf
+      end
+      r.bpos := 0
+    end
+  end
+
+  r.buf.data[r.bpos] := val(byte, ord(ch))
+  inc(r.bpos)
+  r.buf.mod_ := true
+end Write
+
+procedure WriteInt*(R: ^Rider; x: int32)
+  // the four bytes of x, least significant first; unsigned, so that a negative x
+  // is disassembled by shifting and not by Oberon's floored division
+  var u: uint32
+begin
+  u := usig(x)
+  WriteByte(R, val(byte, band(u, 0FFH)))
+  WriteByte(R, val(byte, band(shr(u, 8), 0FFH)))
+  WriteByte(R, val(byte, band(shr(u, 16), 0FFH)))
+  WriteByte(R, val(byte, shr(u, 24)))
+end WriteInt
+
+procedure WriteSet*(R: ^Rider; s: set)
+begin
+  WriteInt(R, sigc(ord(s)))
+end WriteSet
+
+procedure WriteReal*(R: ^Rider; x: real)
+begin
+  WriteInt(R, cast(int32, x))
+end WriteReal
+
+procedure WriteString*(R: ^Rider; const x: pointer to array of char)
+  var i: int32
+    ch: char
+begin
+  i := 0
+  repeat
+    ch := x[i]
+    Write(R, ch)
+    inc(i)
+  until ch = 0X
+end WriteString
+
+procedure WriteNum*(R: ^Rider; x: int32)
+begin
+  // the loop condition is exactly the case of a negative x, so the seven bits of a group are
+  // taken with band, which is Oberon's floored MOD 128, and not with Micron's truncating mod
+  while (x < -64) or (x >= 64) do
+    WriteByte(R, val(byte, band(x, 127) + 128))
+    x := asr(x, 7)
+  end
+  WriteByte(R, val(byte, band(x, 127)))
+end WriteNum
+
+// ---------------------------System use---------------------------
+
+procedure Init*()
+begin
+  root := nil
+  Kernel.Init()
+  FileDir.Init()
+end Init
+
+procedure RestoreList*()
+  // after mark phase of garbage collection
+  var f, f0: AnyPtr
+
+  procedure mark(f: AnyPtr): int32
+    var m: int32
+  begin
+
+    if f = nil then
+      m := -1
+    else
+      m := cast(Int32Ptr, ptroff(f, -4))^
+    end
+    return m
+  end mark
+begin
+  // field "next" has offset 0
+  while mark(root) = 0 do
+    root := cast(AnyPtrPtr, root)^
+  end
+  f := root
+  while f # nil do
+    f0 := f
+    repeat
+      f0 := cast(AnyPtrPtr, f0)^
+    until mark(f0) # 0
+    cast(AnyPtrPtr, f)^ := f0
+    f := f0
+  end
+end RestoreList
+
+end Files.

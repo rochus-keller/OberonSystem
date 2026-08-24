@@ -1,0 +1,604 @@
+module FileDir [level=1] // NW 12.1.86 / 23.8.90 / 15.8.2013 / RK 2026
+(*File Directory is a B-tree with its root page at DirRootAdr.
+Each entry contains a file name and the disk address of the file's head sector*)
+
+import SYS, Kernel
+
+type BytesPtr = pointer to array of byte // helper type for VAR ARRAY OF SYSTEM.BYTE parameters
+
+const
+  FnLength* = 32
+  SecTabSize* = 64
+  ExTabSize* = 12
+  SectorSize* = 1024i2
+  IndexSize* = SectorSize div 4
+  HeaderSize* = 352
+  DirRootAdr* = 29
+  DirPgSize* = 24i1
+  N = DirPgSize div 2
+  DirMark* = sigc(9B1EA38DH)
+  HeaderMark* = sigc(9BA71D86H)
+  FillerSize = 52
+
+type
+  DiskAdr = int32
+  FileName* = array FnLength of char
+  SectorTable* = array SecTabSize of int32
+  ExtensionTable* = array ExTabSize of int32
+  EntryHandler* = procedure(const name: pointer to array of char; sec: int32; continue: pointer to boolean)
+
+  FileHeader* = record
+    // first page of each file on disk
+    mark*: int32
+    name*: FileName
+    aleng*: int32
+    bleng*: int32
+    date*: int32
+    ext*: ExtensionTable
+    sec*: SectorTable
+    fill: array usig(SectorSize - HeaderSize) of byte
+  end
+
+  FileHd* = pointer to FileHeader
+  IndexSector* = array usig(IndexSize) of int32
+  DataSector* = array usig(SectorSize) of byte
+
+  DirEntry* = record
+    // B-tree node
+    name*: FileName
+    adr*: int32 // sec no of file header
+    p*: int32 // sec no of descendant in directory
+  end
+
+  DirPage* = record
+    mark*: int32
+    m*: int32
+    p0*: int32 // sec no of left descendant in directory
+    fill: array FillerSize of byte
+    e*: array usig(DirPgSize) of DirEntry
+  end
+
+// Wirth's original passes a directory page, a file header or an index sector to Kernel's untyped
+// VAR ARRAY OF SYSTEM.BYTE parameter; in Micron the reinterpretation happens once, here.
+
+procedure getPage(adr: DiskAdr; p: ^DirPage) inline
+begin
+  Kernel.GetSector(adr, cast(BytesPtr, p))
+end getPage
+
+procedure putPage(adr: DiskAdr; p: ^DirPage) inline
+begin
+  Kernel.PutSector(adr, cast(BytesPtr, p))
+end putPage
+
+procedure getHeader(adr: DiskAdr; p: ^FileHeader) inline
+begin
+  Kernel.GetSector(adr, cast(BytesPtr, p))
+end getHeader
+
+procedure getIndex(adr: DiskAdr; p: ^IndexSector) inline
+begin
+  Kernel.GetSector(adr, cast(BytesPtr, p))
+end getIndex
+
+// Exported procedures: Search, Insert, Delete, Enumerate, Init
+
+procedure Search*(const name: pointer to array of char; A: ^int32)
+  var i, L, R, dadr: int32
+    a: DirPage
+begin
+  dadr := DirRootAdr
+  A^ := 0
+  repeat
+    getPage(dadr, @a)
+    assert(a.mark = DirMark)
+    L := 0 // binary search
+    R := a.m
+    while L < R do
+      i := (L + R) div 2
+      if name^ <= a.e[i].name then
+        R := i
+      else
+        L := i + 1
+      end
+    end
+    if (R < a.m) & (name^ = a.e[R].name) then
+      A^ := a.e[R].adr // found
+    elsif R = 0 then
+      dadr := a.p0
+    else
+      dadr := a.e[R - 1].p
+    end
+  until (dadr = 0) or (A^ # 0)
+end Search
+
+procedure insert(const name: pointer to array of char; dpg0: int32; h: ^boolean; v: ^DirEntry; fad: int32)
+  // h = "tree has become higher and v is ascending element"
+  var ch: char
+    i, j, L, R, dpg1: int32
+    u: DirEntry
+    a: DirPage
+begin
+  // ~h
+  getPage(dpg0, @a)
+  assert(a.mark = DirMark)
+  L := 0 // binary search
+  R := a.m
+  while L < R do
+    i := (L + R) div 2
+    if name^ <= a.e[i].name then
+      R := i
+    else
+      L := i + 1
+    end
+  end
+  if (R < a.m) & (name^ = a.e[R].name) then
+    a.e[R].adr := fad // replace
+    putPage(dpg0, @a)
+  else
+    // not on this page
+    if R = 0 then
+      dpg1 := a.p0
+    else
+      dpg1 := a.e[R - 1].p
+    end
+    if dpg1 = 0 then
+      // not in tree, insert
+      u.adr := fad
+      u.p := 0
+      h^ := true
+      j := 0
+      repeat
+        ch := name[j]
+        u.name[j] := ch
+        inc(j)
+      until ch = 0X
+
+      while j < FnLength do
+        u.name[j] := 0X
+        inc(j)
+      end
+    else
+      insert(name, dpg1, h, @u, fad)
+    end
+    if h^ then
+      // insert u to the left of e[R]
+      if a.m < DirPgSize then
+        h^ := false
+        i := a.m
+        while i > R do
+          dec(i)
+          a.e[i + 1] := a.e[i]
+        end
+        a.e[R] := u
+        inc(a.m)
+      else
+        // split page and assign the middle element to v
+        a.m := N
+        a.mark := DirMark
+        if R < N then
+          // insert in left half
+          v^ := a.e[N - 1]
+          i := N - 1
+          while i > R do
+            dec(i)
+            a.e[i + 1] := a.e[i]
+          end
+          a.e[R] := u
+          putPage(dpg0, @a)
+          Kernel.AllocSector(dpg0, @dpg0)
+          i := 0
+          while i < N do
+            a.e[i] := a.e[i + N]
+            inc(i)
+          end
+        else
+          // insert in right half
+          putPage(dpg0, @a)
+          Kernel.AllocSector(dpg0, @dpg0)
+          dec(R, N)
+          i := 0
+          if R = 0 then
+            v^ := u
+          else
+            v^ := a.e[N]
+            while i < R - 1 do
+              a.e[i] := a.e[N + 1 + i]
+              inc(i)
+            end
+            a.e[i] := u
+            inc(i)
+          end
+
+          while i < N do
+            a.e[i] := a.e[N + i]
+            inc(i)
+          end
+        end
+        a.p0 := v.p
+        v.p := dpg0
+      end
+      putPage(dpg0, @a)
+    end
+  end
+end insert
+
+procedure Insert*(const name: ^array of char; fad: int32)
+  var oldroot: int32
+    h: boolean
+    U: DirEntry
+    a: DirPage
+begin
+  h := false
+  insert(name, DirRootAdr, @h, @U, fad)
+  if h then
+    // root overflow
+    getPage(DirRootAdr, @a)
+    assert(a.mark = DirMark)
+    Kernel.AllocSector(DirRootAdr, @oldroot)
+    putPage(oldroot, @a)
+    a.mark := DirMark
+    a.m := 1
+    a.p0 := oldroot
+    a.e[0] := U
+    putPage(DirRootAdr, @a)
+  end
+end Insert
+
+
+procedure underflow(c: ^DirPage; dpg0, s: int32; h: ^boolean)
+  // ancestor page
+  // insertion point in c
+  // c undersize
+  var i, k, dpg1: int32
+    a: DirPage // a := underflowing page, b := neighbouring page
+    b: DirPage
+begin
+  getPage(dpg0, @a)
+  assert(a.mark = DirMark)
+  // h & a.m = N-1 & dpg0 = c.e[s-1].p
+  if s < c.m then
+    // b := page to the right of a
+    dpg1 := c.e[s].p
+    getPage(dpg1, @b)
+    assert(b.mark = DirMark)
+    k := (b.m - N + 1) div 2 // k = no. of items available on page b
+    a.e[N - 1] := c.e[s]
+    a.e[N - 1].p := b.p0
+    if k > 0 then
+      // move k-1 items from b to a, one to c
+      i := 0
+      while i < k - 1 do
+        a.e[i + N] := b.e[i]
+        inc(i)
+      end
+      c.e[s] := b.e[i]
+      b.p0 := c.e[s].p
+      c.e[s].p := dpg1
+      b.m := b.m - k
+      i := 0
+      while i < b.m do
+        b.e[i] := b.e[i + k]
+        inc(i)
+      end
+      putPage(dpg1, @b)
+      a.m := N - 1 + k
+      h^ := false
+    else
+      // merge pages a and b, discard b
+      i := 0
+      while i < N do
+        a.e[i + N] := b.e[i]
+        inc(i)
+      end
+      i := s
+      dec(c.m)
+      while i < c.m do
+        c.e[i] := c.e[i + 1]
+        inc(i)
+      end
+      a.m := 2 * N
+      h^ := c.m < N
+    end
+    putPage(dpg0, @a)
+  else
+    // b := page to the left of a
+    dec(s)
+    if s = 0 then
+      dpg1 := c.p0
+    else
+      dpg1 := c.e[s - 1].p
+    end
+    getPage(dpg1, @b)
+    assert(b.mark = DirMark)
+    k := (b.m - N + 1) div 2 // k = no. of items available on page b
+    if k > 0 then
+      i := N - 1
+      while i > 0 do
+        dec(i)
+        a.e[i + k] := a.e[i]
+      end
+      i := k - 1
+      a.e[i] := c.e[s]
+      a.e[i].p := a.p0
+      // move k-1 items from b to a, one to c
+      b.m := b.m - k
+      while i > 0 do
+        dec(i)
+        a.e[i] := b.e[i + b.m + 1]
+      end
+      c.e[s] := b.e[b.m]
+      a.p0 := c.e[s].p
+      c.e[s].p := dpg0
+      a.m := N - 1 + k
+      h^ := false
+      putPage(dpg0, @a)
+    else
+      // merge pages a and b, discard a
+      c.e[s].p := a.p0
+      b.e[N] := c.e[s]
+      i := 0
+      while i < N - 1 do
+        b.e[i + N + 1] := a.e[i]
+        inc(i)
+      end
+      b.m := 2 * N
+      dec(c.m)
+      h^ := c.m < N
+    end
+    putPage(dpg1, @b)
+  end
+end underflow
+
+procedure delete(const name: ^array of char; dpg0: int32; h: ^boolean; fad: ^int32)
+  (*search and delete entry with key name; if a page underflow arises,
+  balance with adjacent page or merge; h := "page dpg0 is undersize"*)
+  var i, L, R, dpg1: int32
+    a: DirPage
+
+  procedure del(a: ^DirPage; R, dpg1: int32; h: ^boolean)
+    var dpg2: int32 // global: a, R
+      b: DirPage
+  begin
+    getPage(dpg1, @b)
+    assert(b.mark = DirMark)
+    dpg2 := b.e[b.m - 1].p
+    if dpg2 # 0 then
+      del(a, R, dpg2, h)
+      if h^ then
+        underflow(@b, dpg2, b.m, h)
+        putPage(dpg1, @b)
+      end
+    else
+      b.e[b.m - 1].p := a.e[R].p
+      a.e[R] := b.e[b.m - 1]
+      dec(b.m)
+      h^ := b.m < N
+      putPage(dpg1, @b)
+    end
+  end del
+begin
+  // ~h
+  getPage(dpg0, @a)
+  assert(a.mark = DirMark)
+  L := 0 // binary search
+  R := a.m
+  while L < R do
+    i := (L + R) div 2
+    if name^ <= a.e[i].name then
+      R := i
+    else
+      L := i + 1
+    end
+  end
+  if R = 0 then
+    dpg1 := a.p0
+  else
+    dpg1 := a.e[R - 1].p
+  end
+  if (R < a.m) & (name^ = a.e[R].name) then // found, now delete
+    fad^ := a.e[R].adr
+    if dpg1 = 0 then // a is a leaf page
+      dec(a.m)
+      h^ := a.m < N
+      i := R
+      while i < a.m do
+        a.e[i] := a.e[i + 1]
+        inc(i)
+      end
+    else
+      del(@a, R, dpg1, h)
+      if h^ then
+        underflow(@a, dpg1, R, h)
+      end
+    end
+    putPage(dpg0, @a)
+  elsif dpg1 # 0 then
+    delete(name, dpg1, h, fad)
+    if h^ then
+      underflow(@a, dpg1, R, h)
+      putPage(dpg0, @a)
+    end
+  else // not in tree
+    fad^ := 0
+  end
+end delete
+
+procedure Delete*(const name: pointer to array of char; fad: ^int32)
+  var h: boolean
+    newroot: int32
+    a: DirPage
+begin
+  h := false
+  delete(name, DirRootAdr, @h, fad)
+  if h then // root underflow
+    getPage(DirRootAdr, @a)
+    assert(a.mark = DirMark)
+    if (a.m = 0) & (a.p0 # 0) then
+      newroot := a.p0
+      getPage(newroot, @a)
+      assert(a.mark = DirMark)
+      putPage(DirRootAdr, @a) // discard newroot
+    end
+  end
+end Delete
+
+procedure enumerate(const prefix: pointer to array of char; dpg: int32; proc_: EntryHandler; continue: ^boolean)
+  var i, j: int32
+    pfx, nmx: char
+    dpg1: int32
+    a: DirPage
+begin
+  getPage(dpg, @a)
+  assert(a.mark = DirMark)
+  i := 0
+  while (i < a.m) & continue^ do
+    j := 0
+    repeat
+      pfx := prefix[j]
+      nmx := a.e[i].name[j]
+      inc(j)
+    until (nmx # pfx) or (pfx = 0X)
+    if nmx >= pfx then
+      if i = 0 then
+        dpg1 := a.p0
+      else
+        dpg1 := a.e[i - 1].p
+      end
+      if dpg1 # 0 then
+        enumerate(prefix, dpg1, proc_, continue)
+      end
+      if pfx = 0X then
+        if continue^ then
+          proc_(@a.e[i].name, a.e[i].adr, continue)
+        end
+      else
+        continue^ := false
+      end
+    end
+    inc(i)
+  end
+  if continue^ & (i > 0) & (a.e[i - 1].p # 0) then
+    enumerate(prefix, a.e[i - 1].p, proc_, continue)
+  end
+end enumerate
+
+procedure Enumerate*(const prefix: pointer to array of char; proc_: EntryHandler)
+  var b: boolean
+begin
+  b := true
+  enumerate(prefix, DirRootAdr, proc_, @b)
+end Enumerate
+
+// ----- initialization -----
+
+procedure Init*()
+  var k: int32
+    A: array 2000 of int32
+
+  procedure MarkSectors(A: pointer to array of int32; k: int32)
+    var L, R, i, j, n, x: int32
+      hd: FileHeader
+      B: IndexSector
+      
+    procedure sift(A: pointer to array of int32; L, R: int32)
+      var i, j, x: int32
+    begin
+      j := L
+      x := A[j]
+      repeat
+        i := j
+        j := 2 * j + 1
+        if (j + 1 < R) & (A[j] < A[j + 1]) then
+          inc(j)
+        end
+        if (j < R) & (x <= A[j]) then
+          A[i] := A[j]
+        end
+      until (j >= R) or (x > A[j])
+
+      A[i] := x
+    end sift
+  begin
+    L := k div 2 // heapsort
+    R := k
+    while L > 0 do
+      dec(L)
+      sift(A, L, R)
+    end
+    while R > 0 do
+      dec(R)
+      x := A[0]
+      A[0] := A[R]
+      A[R] := x
+      sift(A, L, R)
+    end
+    while L < k do
+      getHeader(A[L], @hd)
+      assert(hd.mark = HeaderMark)
+      if hd.aleng < SecTabSize then
+        j := hd.aleng + 1
+        repeat
+          dec(j)
+          Kernel.MarkSector(hd.sec[j])
+        until j = 0
+      else
+        j := SecTabSize
+        repeat
+          dec(j)
+          Kernel.MarkSector(hd.sec[j])
+        until j = 0
+        n := (hd.aleng - SecTabSize) div 256
+        i := 0
+        while i <= n do
+          Kernel.MarkSector(hd.ext[i])
+          getIndex(hd.ext[i], @B) // index sector
+          if i < n then
+            j := 256
+          else
+            j := (hd.aleng - SecTabSize) mod 256 + 1
+          end
+          repeat
+            dec(j)
+            Kernel.MarkSector(B[j])
+          until j = 0
+          inc(i)
+        end
+      end
+      inc(L)
+    end
+  end MarkSectors
+
+  procedure TraverseDir(A: pointer to array of int32; k: ^int32; dpg: int32)
+    var i: int32
+      a: DirPage
+  begin
+    getPage(dpg, @a)
+    assert(a.mark = DirMark)
+    Kernel.MarkSector(dpg)
+    i := 0
+    while i < a.m do
+      A[k^] := a.e[i].adr
+      inc(k^)
+      inc(i)
+      if k^ = 2000 then
+        MarkSectors(A, k^)
+        k^ := 0
+      end
+    end
+    if a.p0 # 0 then
+      TraverseDir(A, k, a.p0)
+      i := 0
+      while i < a.m do
+        TraverseDir(A, k, a.e[i].p)
+        inc(i)
+      end
+    end
+  end TraverseDir
+begin
+  k := 0
+  TraverseDir(@A, @k, DirRootAdr)
+  MarkSectors(@A, k)
+end Init
+
+end FileDir.

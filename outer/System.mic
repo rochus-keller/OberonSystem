@@ -1,0 +1,601 @@
+module System [level=5] // JG 3.10.90 / NW 12.10.93 / NW 20.6.2016 / RK 2026
+
+import Kernel, FileDir, Files, Modules, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames
+
+const
+  StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store"
+  LogMenu = "Edit.Locate Edit.Search System.Copy System.Grow System.Clear"
+
+var
+  W: Texts.Writer
+  pat: array 32 of char
+
+procedure GetArg(S: ^Texts.Scanner)
+  var T: Texts.Text
+    beg, end_, time: int32
+begin
+  Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(S)
+  if (S.class = Texts.Char) & (S.c = "^") then
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.OpenScanner(S, T, beg)
+      Texts.Scan(S)
+    end
+  end
+end GetArg
+
+procedure EndLine()
+begin
+  Texts.WriteLn(@W)
+  Texts.Append(Oberon.Log, W.buf)
+end EndLine
+
+// ------------- Toolbox for system control ---------------
+
+procedure SetUser*()
+  var i: int32
+    ch: char
+    user: array 8 of char
+    password: array 16 of char
+begin
+  i := 0
+  Input.Read(@ch)
+  while (ch # "/") & (i < 7) do
+    user[i] := ch
+    inc(i)
+    Input.Read(@ch)
+  end
+  user[i] := 0X
+  i := 0
+  Input.Read(@ch)
+  while (ch > " ") & (i < 15) do
+    password[i] := ch
+    inc(i)
+    Input.Read(@ch)
+  end
+  password[i] := 0X
+  Oberon.SetUser(@user, @password)
+end SetUser
+
+procedure SetFont*()
+  var S: Texts.Scanner
+begin
+  GetArg(@S)
+  if S.class = Texts.Name then
+    Oberon.SetFont(Fonts.This(@S.s))
+  end
+end SetFont
+
+procedure SetColor*()
+  var S: Texts.Scanner
+begin
+  GetArg(@S)
+  if S.class = Texts.Int then
+    Oberon.SetColor(S.i)
+  end
+end SetColor
+
+procedure SetOffset*()
+  var S: Texts.Scanner
+begin
+  GetArg(@S)
+  if S.class = Texts.Int then
+    Oberon.SetOffset(S.i)
+  end
+end SetOffset
+
+procedure Date*()
+  var S: Texts.Scanner
+    dt, hr, min_, sec, yr, mo, day: int32
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Int then
+    // set clock
+    day := S.i
+    Texts.Scan(@S)
+    mo := S.i
+    Texts.Scan(@S)
+    yr := S.i
+    Texts.Scan(@S)
+    hr := S.i
+    Texts.Scan(@S)
+    min_ := S.i
+    Texts.Scan(@S)
+    sec := S.i
+    dt := ((((yr * 16 + mo) * 32 + day) * 32 + hr) * 64 + min_) * 64 + sec
+    Kernel.SetClock(dt)
+  else
+    // read clock
+    Texts.WriteString(@W, "System.Clock")
+    dt := Oberon.Clock()
+    Texts.WriteClock(@W, dt)
+    EndLine()
+  end
+end Date
+
+procedure Collect*()
+begin
+  Oberon.Collect(0)
+end Collect
+
+// ------------- Toolbox for standard display ---------------
+
+procedure Open*()
+  // open viewer in system track
+  var X, Y: int32
+    V: Viewers.Viewer
+    S: Texts.Scanner
+begin
+  GetArg(@S)
+  if S.class = Texts.Name then
+    Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, @X, @Y)
+    V := MenuViewers.New(TextFrames.NewMenu(@S.s, StandardMenu), TextFrames.NewText(TextFrames.Text(@S.s), 0), TextFrames.menuH, X, Y)
+  end
+end Open
+
+procedure Clear*()
+  // clear Log
+  var T: Texts.Text
+    F: Display.Frame
+    buf: Texts.Buffer
+begin
+  F := Oberon.Par.frame
+  if (F # nil) & (F.next is TextFrames.Frame) & (F = Oberon.Par.vwr.dsc) then
+    newgc(buf)
+    Texts.OpenBuf(buf)
+    T := F.next(TextFrames.Frame).text
+    Texts.Delete(T, 0, T.len_, buf)
+  end
+end Clear
+
+procedure Close*()
+  var V: Viewers.Viewer
+begin
+  if Oberon.Par.frame = Oberon.Par.vwr.dsc then
+    V := Oberon.Par.vwr
+  else
+    V := Oberon.MarkedViewer()
+  end
+  Viewers.Close(V)
+end Close
+
+procedure CloseTrack*()
+  var V: Viewers.Viewer
+begin
+  V := Oberon.MarkedViewer()
+  Viewers.CloseTrack(V.X)
+end CloseTrack
+
+procedure Recall*()
+  var V: Viewers.Viewer
+    M: Viewers.ViewerMsg
+begin
+  Viewers.Recall(@V)
+  if (V # nil) & (V.state = 0) then
+    Viewers.Open(V, V.X, V.Y + V.H)
+    M.id := Viewers.restore
+    V.handle(V, @M)
+  end
+end Recall
+
+procedure Copy*()
+  var V, V1: Viewers.Viewer
+    M: Oberon.CopyMsg
+    N: Viewers.ViewerMsg
+begin
+  V := Oberon.Par.vwr
+  V.handle(V, @M)
+  V1 := M.F(Viewers.Viewer)
+  Viewers.Open(V1, V.X, V.Y + V.H div 2)
+  N.id := Viewers.restore
+  V1.handle(V1, @N)
+end Copy
+
+procedure Grow*()
+  var V, V1: Viewers.Viewer
+    M: Oberon.CopyMsg
+    N: Viewers.ViewerMsg
+    DW, DH: int32
+begin
+  V := Oberon.Par.vwr
+  DW := Oberon.DisplayWidth(V.X)
+  DH := Oberon.DisplayHeight(V.X)
+  if V.H < DH - Viewers.minH then
+    Oberon.OpenTrack(V.X, V.W)
+  elsif V.W < DW then
+    Oberon.OpenTrack(Oberon.UserTrack(V.X), DW)
+  end
+  if (V.H < DH - Viewers.minH) or (V.W < DW) then
+    V.handle(V, @M)
+    V1 := M.F(Viewers.Viewer)
+    Viewers.Open(V1, V.X, DH)
+    N.id := Viewers.restore
+    V1.handle(V1, @N)
+  end
+end Grow
+
+// ------------- Toolbox for module management ---------------
+
+procedure Free1(S: ^Texts.Scanner)
+begin
+  Texts.WriteString(@W, @S.s)
+  Texts.WriteString(@W, " unloading")
+  Modules.Free(@S.s)
+  if Modules.res # 0 then
+    Texts.WriteString(@W, " failed")
+  end
+  EndLine()
+end Free1
+
+procedure Free*()
+  var T: Texts.Text
+    beg, end_, time: int32
+    S: Texts.Scanner
+begin
+  Texts.WriteString(@W, "System.Free")
+  EndLine()
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if (S.class = Texts.Char) & (S.c = "^") then
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.OpenScanner(@S, T, beg)
+      Texts.Scan(@S)
+      if S.class = Texts.Name then
+        Free1(@S)
+      end
+    end
+  else
+    while S.class = Texts.Name do
+      Free1(@S)
+      Texts.Scan(@S)
+    end
+  end
+  Oberon.Collect(0)
+end Free
+
+procedure FreeFonts*()
+begin
+  Texts.WriteString(@W, "System.FreeFonts")
+  Fonts.Free()
+  EndLine()
+end FreeFonts
+
+// ------------- Toolbox of file system ---------------
+
+procedure List(const name: pointer to array of char; adr: int32; cont: ^boolean)
+  type BytesPtr = pointer to array of byte 
+  var i0, i, j0, j: int32
+    hp: FileDir.FileHeader
+begin
+  i := 0
+  while (pat[i] > "*") & (pat[i] = name[i]) do
+    inc(i)
+  end
+  if (pat[i] = 0X) & (name[i] = 0X) then
+    i0 := i
+    j0 := i
+  elsif pat[i] = "*" then
+    i0 := i
+    j0 := i + 1
+    while name[i0] # 0X do
+      i := i0
+      j := j0
+      while (name[i] # 0X) & (name[i] = pat[j]) do
+        inc(i)
+        inc(j)
+      end
+      if pat[j] = 0X then
+        if name[i] = 0X then
+          // match
+          j0 := j
+        else
+          inc(i0)
+        end
+      elsif pat[j] = "*" then
+        i0 := i
+        j0 := j + 1
+      else
+        inc(i0)
+      end
+    end
+  end
+  if (name[i0] = 0X) & (pat[j0] = 0X) then // found
+    Texts.WriteString(@W, name)
+    if pat[j0 + 1] = "!" then // option
+      Kernel.GetSector(adr, cast(BytesPtr, @hp))
+      Texts.Write(@W, 9X)
+      Texts.WriteClock(@W, hp.date)
+      Texts.WriteInt(@W, hp.aleng * FileDir.SectorSize + hp.bleng - FileDir.HeaderSize, 8) // length
+      // Texts.WriteHex(W, adr)
+    end
+    Texts.WriteLn(@W)
+  end
+end List
+
+procedure Directory*()
+  var X, Y, i: int32
+    ch: char
+    R: Texts.Reader
+    T, t: Texts.Text
+    V: Viewers.Viewer
+    beg, end_, time: int32
+    pre: array 32 of char
+begin
+  Texts.OpenReader(@R, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Read(@R, @ch)
+  while ch = " " do
+    Texts.Read(@R, @ch)
+  end
+  if (ch = "^") or (ch = 0DX) then
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.OpenReader(@R, T, beg)
+      Texts.Read(@R, @ch)
+      while ch <= " " do
+        Texts.Read(@R, @ch)
+      end
+    end
+  end
+  i := 0
+  while ch > "!" do
+    pat[i] := ch
+    inc(i)
+    Texts.Read(@R, @ch)
+  end
+  pat[i] := 0X
+  if ch = "!" then
+    pat[i + 1] := "!" // directory option
+  end
+  i := 0
+  while pat[i] > "*" do
+    pre[i] := pat[i]
+    inc(i)
+  end
+  pre[i] := 0X
+  Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, @X, @Y)
+  t := TextFrames.Text("")
+  V := MenuViewers.New(TextFrames.NewMenu("System.Directory", StandardMenu), TextFrames.NewText(t, 0), TextFrames.menuH, X, Y)
+  FileDir.Enumerate(@pre, List)
+  Texts.Append(t, W.buf)
+end Directory
+
+procedure CopyFiles*()
+  var f, g: Files.File
+    Rf, Rg: Files.Rider
+    ch: char
+    name: array 32 of char
+    S: Texts.Scanner
+begin
+  GetArg(@S)
+  Texts.WriteString(@W, "System.CopyFiles")
+  EndLine()
+  while S.class = Texts.Name do
+    copy(@name, @S.s, 32)
+    Texts.Scan(@S)
+    if (S.class = Texts.Char) & (S.c = "=") then
+      Texts.Scan(@S)
+      if (S.class = Texts.Char) & (S.c = ">") then
+        Texts.Scan(@S)
+        if S.class = Texts.Name then
+          Texts.WriteString(@W, @name)
+          Texts.WriteString(@W, " => ")
+          Texts.WriteString(@W, @S.s)
+          Texts.WriteString(@W, " copying")
+          Texts.Append(Oberon.Log, W.buf)
+          f := Files.Old(@name)
+          if f # nil then
+            g := Files.New(@S.s)
+            Files.Set(@Rf, f, 0)
+            Files.Set(@Rg, g, 0)
+            Files.Read(@Rf, @ch)
+            while ~Rf.eof do
+              Files.Write(@Rg, ch)
+              Files.Read(@Rf, @ch)
+            end
+            Files.Register(g)
+          else
+            Texts.WriteString(@W, " failed")
+          end
+          EndLine()
+        end
+      end
+    end
+    Texts.Scan(@S)
+  end
+end CopyFiles
+
+procedure RenameFiles*()
+  var res: int32
+    name: array 32 of char
+    S: Texts.Scanner
+begin
+  GetArg(@S)
+  Texts.WriteString(@W, "System.RenameFiles")
+  EndLine()
+  while S.class = Texts.Name do
+    copy(@name, @S.s, 32)
+    Texts.Scan(@S)
+    if (S.class = Texts.Char) & (S.c = "=") then
+      Texts.Scan(@S)
+      if (S.class = Texts.Char) & (S.c = ">") then
+        Texts.Scan(@S)
+        if S.class = Texts.Name then
+          Texts.WriteString(@W, @name)
+          Texts.WriteString(@W, " => ")
+          Texts.WriteString(@W, @S.s)
+          Texts.WriteString(@W, " renaming")
+          Files.Rename(@name, @S.s, @res)
+          if res > 1 then
+            Texts.WriteString(@W, " failed")
+          end
+          EndLine()
+        end
+      end
+    end
+    Texts.Scan(@S)
+  end
+end RenameFiles
+
+procedure DeleteFiles*()
+  var res: int32
+    S: Texts.Scanner
+begin
+  GetArg(@S)
+  Texts.WriteString(@W, "System.DeleteFiles")
+  EndLine()
+  while S.class = Texts.Name do
+    Texts.WriteString(@W, @S.s)
+    Texts.WriteString(@W, " deleting")
+    Files.Delete(@S.s, @res)
+    if res # 0 then
+      Texts.WriteString(@W, " failed")
+    end
+    EndLine()
+    Texts.Scan(@S)
+  end
+end DeleteFiles
+
+// ------------- Toolbox for system inspection ---------------
+
+procedure Watch*()
+begin
+  Texts.WriteString(@W, "System.Watch")
+  Texts.WriteLn(@W)
+  Texts.WriteString(@W, "  Modules space (bytes)")
+  Texts.WriteInt(@W, Modules.AllocPtr, 8)
+  Texts.WriteInt(@W, Modules.AllocPtr * 100 div val(int32, ord(Kernel.heapOrg)), 4)
+  Texts.Write(@W, "%")
+  EndLine()
+  Texts.WriteString(@W, "  Heap speace")
+  Texts.WriteInt(@W, Kernel.allocated, 8)
+  Texts.WriteInt(@W, Kernel.allocated * 100 div Kernel.HeapSize(), 4)
+  Texts.Write(@W, "%")
+  Texts.WriteString(@W, ", collections")
+  Texts.WriteInt(@W, Kernel.Collections, 4)
+  EndLine()
+  Texts.WriteString(@W, "  Disk sectors ")
+  Texts.WriteInt(@W, Kernel.NofSectors, 4)
+  Texts.WriteInt(@W, Kernel.NofSectors * 100 div 65536, 4)
+  Texts.Write(@W, "%")
+  EndLine()
+  Texts.WriteString(@W, "  Tasks")
+  Texts.WriteInt(@W, Oberon.NofTasks, 4)
+  EndLine()
+end Watch
+
+procedure ShowModules*()
+  var T: Texts.Text
+    V: Viewers.Viewer
+    M: Modules.Module
+    X, Y: int32
+begin
+  T := TextFrames.Text("")
+  Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, @X, @Y)
+  V := MenuViewers.New(TextFrames.NewMenu("System.ShowModules", StandardMenu), TextFrames.NewText(T, 0), TextFrames.menuH, X, Y)
+  M := Modules.root
+  while M # nil do
+    if M.name[0] # 0X then
+      Texts.WriteString(@W, @M.name)
+      Texts.Write(@W, 9X)
+      Texts.WriteHex(@W, val(int32, ord(M)))
+      Texts.WriteHex(@W, M.code)
+      Texts.WriteInt(@W, M.refcnt, 4)
+    else
+      Texts.WriteString(@W, "---")
+    end
+    Texts.WriteLn(@W)
+    M := M.next
+  end
+  Texts.Append(T, W.buf)
+end ShowModules
+
+procedure ShowCommands*()
+  var M: Modules.Module
+    T: Texts.Text
+    S: Texts.Scanner
+    V: Viewers.Viewer
+    X, Y, i: int32
+begin
+  GetArg(@S)
+  if S.class = Texts.Name then
+    Modules.Load(@S.s, @M)
+    if M # nil then
+      Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, @X, @Y)
+      T := TextFrames.Text("")
+      V := MenuViewers.New(TextFrames.NewMenu("System.Commands", StandardMenu), TextFrames.NewText(T, 0), TextFrames.menuH, X, Y)
+      // Oberon walks the command block at M.cmd of the loaded module; here the commands
+      // are the ones registered for the statically linked module, see Design.md
+      i := 0
+      while i < Modules.nofCmds do
+        if Modules.cmdTab[i].mod_ = M then
+          Texts.WriteString(@W, @S.s)
+          Texts.Write(@W, ".")
+          Texts.WriteString(@W, @Modules.cmdTab[i].name)
+          Texts.WriteLn(@W)
+        end
+        inc(i)
+      end
+      Texts.Append(T, W.buf)
+    end
+  end
+end ShowCommands
+
+procedure ShowFonts*()
+  var fnt: Fonts.Font
+begin
+  Texts.WriteString(@W, "System.ShowFonts")
+  Texts.WriteLn(@W)
+  fnt := Fonts.root
+  while fnt # nil do
+    Texts.Write(@W, 9X)
+    Texts.WriteString(@W, @fnt.name)
+    Texts.WriteLn(@W)
+    fnt := fnt.next
+  end
+  Texts.Append(Oberon.Log, W.buf)
+end ShowFonts
+
+procedure OpenViewers()
+  var logV, toolV: Viewers.Viewer
+    menu, main: Display.Frame
+    d, X, Y: int32
+begin
+  d := Kernel.Clock()
+  Texts.WriteString(@W, "Oberon V5  NW 14.4.2013")
+  EndLine()
+  Oberon.AllocateSystemViewer(0, @X, @Y)
+  menu := TextFrames.NewMenu("System.Log", LogMenu)
+  main := TextFrames.NewText(Oberon.Log, 0)
+  logV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y)
+  Oberon.AllocateSystemViewer(0, @X, @Y)
+  menu := TextFrames.NewMenu("System.Tool", StandardMenu)
+  main := TextFrames.NewText(TextFrames.Text("System.Tool"), 0)
+  toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y)
+end OpenViewers
+
+procedure ExtendDisplay*()
+  var V: Viewers.Viewer
+    X, Y, DX, DW, DH: int32
+    S: Texts.Scanner
+begin
+  GetArg(@S)
+  if S.class = Texts.Name then
+    DX := Viewers.curW
+    DW := Oberon.DisplayWidth(DX)
+    DH := Oberon.DisplayHeight(DX)
+    Oberon.OpenDisplay(DW div 8 * 5, DW div 8 * 3, DH)
+    Oberon.AllocateSystemViewer(DX, @X, @Y)
+    V := MenuViewers.New(TextFrames.NewMenu(@S.s, StandardMenu), TextFrames.NewText(TextFrames.Text(@S.s), 0), TextFrames.menuH, X, Y)
+  end
+end ExtendDisplay
+
+// Trap and Abort are dropped, see Design.md
+
+begin
+  Texts.OpenWriter(@W)
+  Oberon.OpenLog(TextFrames.Text(""))
+  OpenViewers()
+end System.

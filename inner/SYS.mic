@@ -1,0 +1,73 @@
+module SYS [level=1]  // RK 2026
+// Originally Oberon-07 built-in procedures which had no counterpart in Oberon-90;
+// Now mostly low-level utilities like ROT and spillRegs which requires language level 2
+
+import MIC
+
+procedure TRACE*(ch: char)
+  // the RS232 interface serves as debug console, see DESIGN.md
+  type Int32Ptr = pointer to int32 
+begin
+  Int32Ptr{MIC.rs232data}^ := +ord(ch)
+end TRACE
+
+procedure TRACEHEX*(n: int32)
+  // a number on the debug console
+  var i, d: int32
+    u: uint32
+    buf: array 8 of char
+begin
+  u := usig(n)
+  i := 0
+  while i < 8 do
+    d := cast(int32,band(u, 0FH))
+    u := shr(u, 4)
+    if d < 10 then
+      buf[i] := chr(d + 30H)
+    else
+      buf[i] := chr(d + 37H)
+    end
+    inc(i)
+  end
+  while i > 0 do
+    dec(i)
+    TRACE(buf[i])
+  end
+  TRACE(" ")
+end TRACEHEX
+
+procedure ROT*(x, n: int32): int32
+  // x rotated left by n bits, right if n is negative; two shifts, see DESIGN.md
+  var m: uint32
+    u: uint32
+begin
+  m := usig(obmod(n, 32)) // 0 <= m < 32, also for a negative n
+  u := usig(x)
+  if m = 0 then
+    return x
+  end
+  return cast(int32,shl(u, m) + shr(u, 32 - m))
+end ROT
+
+// SYSTEM.H, REG, REGADR and LDREG are no longer required, see DESIGN.md
+
+procedure spillRegs*(p: ^array of uint32)
+// the fourteen registers a called procedure must preserve, as words at p
+begin
+  getreg(1, p[0])  // ra
+  getreg(2, p[1])  // sp
+  getreg(8, p[2])   // s0
+  getreg(9, p[3])   // s1
+  getreg(18, p[4])  // s2
+  getreg(19, p[5])  // s3
+  getreg(20, p[6])  // s4
+  getreg(21, p[7])  // s5
+  getreg(22, p[8])  // s6
+  getreg(23, p[9])  // s7
+  getreg(24, p[10]) // s8
+  getreg(25, p[11]) // s9
+  getreg(26, p[12]) // s10
+  getreg(27, p[13]) // s11
+end spillRegs
+
+end SYS.

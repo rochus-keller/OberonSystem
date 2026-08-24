@@ -1,0 +1,1080 @@
+module Graphics [level=5] // NW 21.12.89 / 18.11.201 / 8.4.2016 / RK 2026
+
+import Files, Modules, Fonts, Texts, Oberon
+
+// Printer,
+
+const
+  NameLen* = 32
+  GraphFileId = 0FAX
+  LibFileId = 0FBX
+
+type
+  Int32Ptr = pointer to int32 // helper type for a variable reinterpreted by SYSTEM.VAL
+
+  Graph* = pointer to GraphDesc
+  Object* = pointer to ObjectDesc
+  Method* = pointer to MethodDesc
+
+  Line* = pointer to LineDesc
+  Caption* = pointer to CaptionDesc
+  Macro* = pointer to MacroDesc
+
+  ObjectDesc* = object
+    x*: int32
+    y*: int32
+    w*: int32
+    h*: int32
+    col*: byte
+    selected*: boolean
+    marked*: boolean
+    do_*: Method
+    next: Object
+  end
+
+  Msg* = object
+  end
+  PMsg* = pointer to Msg
+  Handler* = procedure(obj: Object; msg: pointer to Msg)
+  WidMsg* = object (Msg)
+    w*: int32
+  end
+  PWidMsg* = pointer to WidMsg
+  ColorMsg* = object (Msg)
+    col*: int32
+  end
+  PColorMsg* = pointer to ColorMsg
+  FontMsg* = object (Msg)
+    fnt*: Fonts.Font
+  end
+  PFontMsg* = pointer to FontMsg
+  Name* = array NameLen of char
+
+  GraphDesc* = record
+    time*: int32
+    sel*: Object
+    first: Object
+    changed*: boolean
+  end
+
+  MacHead* = pointer to MacHeadDesc
+  MacExt* = pointer to MacExtDesc
+  Library* = pointer to LibraryDesc
+
+  MacHeadDesc* = record
+    name*: Name
+    w*: int32
+    h*: int32
+    ext*: MacExt
+    lib*: Library
+    first: Object
+    next: MacHead
+  end
+
+  LibraryDesc* = record
+    name*: Name
+    first: MacHead
+    next: Library
+  end
+
+  MacExtDesc* = record
+  end
+
+  Context* = record
+    nofonts: int32
+    noflibs: int32
+    nofclasses: int32
+    font: array 10 of Fonts.Font
+    lib: array 4 of Library
+    class: array 6 of Modules.Command
+  end
+
+  MethodDesc* = record
+    module_*: Name
+    allocator*: Name
+    new_*: Modules.Command
+    copy_*: procedure(from: Object; to_: Object)
+    draw*: Handler
+    change*: Handler
+    selectable*: procedure(obj: Object; x: int32; y: int32): boolean
+    read*: procedure(obj: Object; R: pointer to Files.Rider; C: pointer to Context)
+    write*: procedure(obj: Object; cno: int32; R: pointer to Files.Rider; C: pointer to Context)
+    print_*: procedure(obj: Object; x: int32; y: int32)
+  end
+
+  LineDesc* = object (ObjectDesc)
+    unused*: int32
+  end
+
+  CaptionDesc* = object (ObjectDesc)
+    pos*: int32
+    len_*: int32
+  end
+
+  MacroDesc* = object (ObjectDesc)
+    mac*: MacHead
+  end
+
+var
+  width*: int32
+  res*: int32
+  new_: Object
+  T*: Texts.Text // captions
+  LineMethod*: Method
+  CapMethod*: Method
+  MacMethod*: Method
+  GetLib0: procedure(const name: pointer to array of char; replace: boolean; Lib: pointer to Library)
+
+  FirstLib: Library
+  W: Texts.Writer
+  TW: Texts.Writer
+  XW: Texts.Writer
+
+procedure New*(obj: Object)
+begin
+  new_ := obj
+end New
+
+procedure Add*(G: Graph; obj: Object)
+begin
+  obj.marked := false
+  obj.selected := true
+  obj.next := G.first
+  G.first := obj
+  G.sel := obj
+  G.time := Oberon.Time()
+  G.changed := true
+end Add
+
+procedure ThisObj*(G: Graph; x, y: int32): Object
+  var obj: Object
+begin
+  obj := G.first
+  while (obj # nil) & ~obj.do_.selectable(obj, x, y) do
+    obj := obj.next
+  end
+  return obj
+end ThisObj
+
+procedure SelectObj*(G: Graph; obj: Object)
+begin
+  if obj # nil then
+    obj.selected := true
+    G.sel := obj
+    G.time := Oberon.Time()
+  end
+end SelectObj
+
+procedure SelectArea*(G: Graph; x0, y0, x1, y1: int32)
+  var obj: Object
+    t: int32
+begin
+  obj := G.first
+  if x1 < x0 then
+    t := x0
+    x0 := x1
+    x1 := t
+  end
+  if y1 < y0 then
+    t := y0
+    y0 := y1
+    y1 := t
+  end
+  while obj # nil do
+    if (x0 <= obj.x) & (obj.x + obj.w <= x1) & (y0 <= obj.y) & (obj.y + obj.h <= y1) then
+      obj.selected := true
+      G.sel := obj
+    end
+    obj := obj.next
+  end
+  if G.sel # nil then
+    G.time := Oberon.Time()
+  end
+end SelectArea
+
+procedure Draw*(G: Graph; M: ^Msg)
+  var obj: Object
+begin
+  obj := G.first
+  while obj # nil do
+    obj.do_.draw(obj, M)
+    obj := obj.next
+  end
+end Draw
+
+procedure List*(G: Graph)
+  var obj: Object
+    tag: int32
+begin
+  obj := G.first
+  while obj # nil do
+    Texts.Write(@XW, 9X)
+    Texts.WriteHex(@XW, val(int32, ord(obj)))
+    Texts.Write(@XW, 9X)
+    Texts.WriteInt(@XW, obj.x, 5)
+    Texts.WriteInt(@XW, obj.y, 5)
+    Texts.WriteInt(@XW, obj.w, 5)
+    Texts.WriteInt(@XW, obj.h, 5)
+    Texts.Write(@XW, "/")
+    tag := cast(Int32Ptr, ptroff(obj, -8))^
+    Texts.WriteHex(@XW, tag)
+    tag := cast(Int32Ptr, ptroff(obj, -4))^
+    Texts.WriteHex(@XW, tag)
+    Texts.WriteLn(@XW)
+    obj := obj.next
+  end
+  Texts.Append(Oberon.Log, XW.buf)
+end List
+
+// ----------------procedures operating on selection -------------------
+
+procedure Deselect*(G: Graph)
+  var obj: Object
+begin
+  obj := G.first
+  G.sel := nil
+  G.time := 0
+  while obj # nil do
+    obj.selected := false
+    obj := obj.next
+  end
+end Deselect
+
+procedure DrawSel*(G: Graph; M: ^Msg)
+  var obj: Object
+begin
+  obj := G.first
+  while obj # nil do
+    if obj.selected then
+      obj.do_.draw(obj, M)
+    end
+    obj := obj.next
+  end
+end DrawSel
+
+procedure Change*(G: Graph; M: ^Msg)
+  var obj: Object
+begin
+  obj := G.first
+  G.changed := true
+  while obj # nil do
+    if obj.selected then
+      obj.do_.change(obj, M)
+    end
+    obj := obj.next
+  end
+end Change
+
+procedure Move*(G: Graph; dx, dy: int32)
+  var obj, ob0: Object
+    x0, x1, y0, y1: int32
+begin
+  obj := G.first
+  G.changed := true
+  while obj # nil do
+    if obj.selected & ~(obj is Caption) then
+      x0 := obj.x
+      x1 := obj.w + x0
+      y0 := obj.y
+      y1 := obj.h + y0
+      if dx = 0 then // vertical move
+        ob0 := G.first
+        while ob0 # nil do
+          if ~ob0.selected & (ob0 is Line) & (x0 <= ob0.x) & (ob0.x <= x1) & (ob0.w < ob0.h) then
+            if (y0 <= ob0.y) & (ob0.y <= y1) then
+              inc(ob0.y, dy)
+              dec(ob0.h, dy)
+              ob0.marked := true
+            elsif (y0 <= ob0.y + ob0.h) & (ob0.y + ob0.h <= y1) then
+              inc(ob0.h, dy)
+              ob0.marked := true
+            end
+          end
+          ob0 := ob0.next
+        end
+      elsif dy = 0 then // horizontal move
+        ob0 := G.first
+        while ob0 # nil do
+          if ~ob0.selected & (ob0 is Line) & (y0 <= ob0.y) & (ob0.y <= y1) & (ob0.h < ob0.w) then
+            if (x0 <= ob0.x) & (ob0.x <= x1) then
+              inc(ob0.x, dx)
+              dec(ob0.w, dx)
+              ob0.marked := true
+            elsif (x0 <= ob0.x + ob0.w) & (ob0.x + ob0.w <= x1) then
+              inc(ob0.w, dx)
+              ob0.marked := true
+            end
+          end
+          ob0 := ob0.next
+        end
+      end
+    end
+    obj := obj.next
+  end
+  obj := G.first // now move
+  while obj # nil do
+    if obj.selected then
+      inc(obj.x, dx)
+      inc(obj.y, dy)
+    end
+    obj.marked := false
+    obj := obj.next
+  end
+end Move
+
+procedure Copy*(Gs, Gd: Graph; dx, dy: int32)
+  var obj: Object
+begin
+  obj := Gs.first
+  Gd.changed := true
+  while obj # nil do
+    if obj.selected then
+      obj.do_.new_()
+      obj.do_.copy_(obj, new_)
+      inc(new_.x, dx)
+      inc(new_.y, dy)
+      obj.selected := false
+      Add(Gd, new_)
+    end
+    obj := obj.next
+  end
+  new_ := nil
+end Copy
+
+procedure Delete*(G: Graph)
+  var obj, pred: Object
+begin
+  G.sel := nil
+  G.changed := true
+  obj := G.first
+  while (obj # nil) & obj.selected do
+    obj := obj.next
+  end
+  G.first := obj
+  if obj # nil then
+    pred := obj
+    obj := obj.next
+    while obj # nil do
+      if obj.selected then
+        pred.next := obj.next
+      else
+        pred := obj
+      end
+      obj := obj.next
+    end
+  end
+end Delete
+
+// ---------------------- Storing -----------------------
+
+procedure WMsg(const s0, s1: pointer to array of char)
+begin
+  Texts.WriteString(@W, s0)
+  Texts.WriteString(@W, s1)
+  Texts.WriteLn(@W)
+  Texts.Append(Oberon.Log, W.buf)
+end WMsg
+
+procedure InitContext(C: ^Context)
+begin
+  C.nofonts := 0
+  C.noflibs := 0
+  C.nofclasses := 4
+  C.class[1] := LineMethod.new_
+  C.class[2] := CapMethod.new_
+  C.class[3] := MacMethod.new_
+end InitContext
+
+procedure FontNo*(W: ^Files.Rider; C: ^Context; fnt: Fonts.Font): int32
+  var fno: int32
+begin
+  fno := 0
+  while (fno < C.nofonts) & (C.font[fno] # fnt) do
+    inc(fno)
+  end
+  if fno = C.nofonts then
+    Files.WriteByte(W, 0u1)
+    Files.WriteByte(W, 0u1)
+    Files.WriteByte(W, val(byte, fno))
+    Files.WriteString(W, @fnt.name)
+    C.font[fno] := fnt
+    inc(C.nofonts)
+  end
+  return fno
+end FontNo
+
+procedure StoreElems(W: ^Files.Rider; C: ^Context; obj: Object)
+  var cno: int32
+begin
+  while obj # nil do
+    cno := 1
+    while (cno < C.nofclasses) & (obj.do_.new_ # C.class[cno]) do
+      inc(cno)
+    end
+    if cno = C.nofclasses then
+      Files.WriteByte(W, 0u1)
+      Files.WriteByte(W, 2u1)
+      Files.WriteByte(W, val(byte, cno))
+      Files.WriteString(W, @obj.do_.module_)
+      Files.WriteString(W, @obj.do_.allocator)
+      C.class[cno] := obj.do_.new_
+      inc(C.nofclasses)
+    end
+    obj.do_.write(obj, cno, W, C)
+    obj := obj.next
+  end
+  Files.WriteByte(W, 0FFH)
+end StoreElems
+
+procedure Store*(G: Graph; W: ^Files.Rider)
+  var C: Context
+begin
+  InitContext(@C)
+  StoreElems(W, @C, G.first)
+  G.changed := false
+end Store
+
+procedure WriteObj*(W: ^Files.Rider; cno: int32; obj: Object)
+begin
+  Files.WriteByte(W, val(byte, cno))
+  Files.WriteInt(W, obj.y * 65536 + obj.x)
+  Files.WriteInt(W, obj.h * 65536 + obj.w)
+  Files.WriteByte(W, obj.col)
+end WriteObj
+
+procedure WriteFile*(G: Graph; const name: pointer to array of char)
+  var F: Files.File
+    W: Files.Rider
+    C: Context
+begin
+  F := Files.New(name)
+  Files.Set(@W, F, 0)
+  Files.Write(@W, GraphFileId)
+  InitContext(@C)
+  StoreElems(@W, @C, G.first)
+  Files.Register(F)
+end WriteFile
+
+procedure Print*(G: Graph; x0, y0: int32)
+  var obj: Object
+begin
+  obj := G.first
+  while obj # nil do
+    obj.do_.print_(obj, x0, y0)
+    obj := obj.next
+  end
+end Print
+
+// ---------------------- Loading ------------------------
+
+procedure GetClass*(const module_, allocator: pointer to array of char; com: ^Modules.Command)
+  var mod_: Modules.Module
+begin
+  Modules.Load(module_, @mod_)
+  if mod_ # nil then
+    com^ := Modules.ThisCommand(mod_, allocator)
+    if com^ = nil then
+      WMsg(allocator, " unknown")
+    end
+  else
+    WMsg(module_, " not available")
+    com^ := nil
+  end
+end GetClass
+
+procedure Font*(R: ^Files.Rider; C: ^Context): Fonts.Font
+  var fno: byte
+begin
+  Files.ReadByte(R, @fno)
+  return C.font[fno]
+end Font
+
+procedure ReadObj(R: ^Files.Rider; obj: Object)
+  var xy, wh: int32
+    dmy: byte
+begin
+  Files.ReadInt(R, @xy)
+  obj.y := xy div 65536
+  obj.x := xy * 65536 div 65536
+  Files.ReadInt(R, @wh)
+  obj.h := wh div 65536
+  obj.w := wh * 65536 div 65536
+  Files.ReadByte(R, @obj.col)
+end ReadObj
+
+procedure LoadElems(R: ^Files.Rider; C: ^Context; fobj: ^Object)
+  var cno, m, n, len_: byte
+    pos: int32
+    obj: Object
+    fnt: Fonts.Font
+    name, name1: array 32 of char
+begin
+  obj := nil
+  Files.ReadByte(R, @cno)
+  while ~R.eof & (cno < 255) do
+    if cno = 0 then
+      Files.ReadByte(R, @m)
+      Files.ReadByte(R, @n)
+      Files.ReadString(R, @name, 32)
+      if m = 0 then
+        fnt := Fonts.This(@name)
+        C.font[n] := fnt
+      elsif m = 1 then
+        GetLib0(@name, false, @C.lib[n])
+      elsif m = 2 then
+        Files.ReadString(R, @name1, 32)
+        GetClass(@name, @name1, @C.class[n])
+      end
+    elsif C.class[cno] # nil then
+      C.class[cno]()
+      ReadObj(R, new_)
+      new_.selected := false
+      new_.marked := false
+      new_.next := obj
+      obj := new_
+      new_.do_.read(new_, R, C)
+    else
+      ReadObj(R, new_)
+      Files.ReadByte(R, @len_)
+      pos := Files.Pos(R)
+      Files.Set(R, Files.Base(R), pos + sigl(len_)) 
+    end
+    Files.ReadByte(R, @cno)
+  end
+  new_ := nil
+  fobj^ := obj
+end LoadElems
+
+procedure Load*(G: Graph; R: ^Files.Rider)
+  var C: Context
+begin
+  G.sel := nil
+  InitContext(@C)
+  LoadElems(R, @C, @G.first)
+end Load
+
+procedure Open*(G: Graph; const name: pointer to array of char)
+  var tag: char
+    F: Files.File
+    R: Files.Rider
+    C: Context
+begin
+  G.first := nil
+  G.sel := nil
+  G.time := 0
+  G.changed := false
+  F := Files.Old(name)
+  if F # nil then
+    Files.Set(@R, F, 0)
+    Files.Read(@R, @tag)
+    if tag = GraphFileId then
+      InitContext(@C)
+      LoadElems(@R, @C, @G.first)
+      res := 0
+    else
+      res := 1
+    end
+  else
+    res := 2
+  end
+end Open
+
+procedure SetWidth*(w: int32)
+begin
+  width := w
+end SetWidth
+
+// --------------------- Macros / Libraries -----------------------
+
+procedure GetLib*(const name: pointer to array of char; replace: boolean; Lib: ^Library)
+  var i, wh: int32
+    ch: char
+    L: Library
+    mh: MacHead
+    obj: Object
+    F: Files.File
+    R: Files.Rider
+    C: Context
+    Lname, Fname: array 32 of char
+begin
+  L := FirstLib
+  i := 0
+  while (L # nil) & (L.name # name^) do
+    L := L.next
+  end
+  if L = nil then
+    // load library from file
+    i := 0
+    while name[i] > 0X do
+      Fname[i] := name[i]
+      inc(i)
+    end
+    Fname[i] := "."
+    Fname[i + 1] := "L"
+    Fname[i + 2] := "i"
+    Fname[i + 3] := "b"
+    Fname[i + 4] := 0X
+    F := Files.Old(@Fname)
+    if F # nil then
+      WMsg("loading ", @Fname)
+      Files.Set(@R, F, 0)
+      Files.Read(@R, @ch)
+      if ch = LibFileId then
+        if L = nil then
+          newgc(L)
+          copy(@L.name, name, NameLen )
+          L.next := FirstLib
+          FirstLib := L
+        end
+        L.first := nil
+        InitContext(@C)
+        LoadElems(@R, @C, @obj)
+        while obj # nil do
+          newgc(mh)
+          mh.first := obj
+          Files.ReadInt(@R, @wh)
+          mh.h := wh div 65536 mod 65536
+          mh.w := wh mod 65536
+          Files.ReadString(@R, @mh.name, NameLen)
+          mh.lib := L
+          mh.next := L.first
+          L.first := mh
+          LoadElems(@R, @C, @obj)
+        end
+      else
+        L := nil
+      end
+    else
+      L := nil
+    end
+  end
+  Lib^ := L
+end GetLib
+
+procedure NewLib*(const Lname: pointer to array of char): Library
+  var L: Library
+begin
+  newgc(L)
+  copy(@L.name, Lname, NameLen)
+  L.first := nil
+  L.next := FirstLib
+  FirstLib := L
+  return L
+end NewLib
+
+procedure StoreLib*(L: Library; const Fname: pointer to array of char)
+  var i: int32
+    mh: MacHead
+    F: Files.File
+    W: Files.Rider
+    C: Context
+    Gname: array 32 of char
+begin
+  L := FirstLib
+  while (L # nil) & (L.name # Fname^) do
+    L := L.next
+  end
+  if L # nil then
+    i := 0
+    while Fname[i] > 0X do
+      Gname[i] := Fname[i]
+      inc(i)
+    end
+    Gname[i] := "."
+    Gname[i + 1] := "L"
+    Gname[i + 2] := "i"
+    Gname[i + 3] := "b"
+    Gname[i + 4] := 0X
+    F := Files.New(@Gname)
+    Files.Set(@W, F, 0)
+    Files.Write(@W, LibFileId)
+    InitContext(@C)
+    mh := L.first
+    while mh # nil do
+      StoreElems(@W, @C, mh.first)
+      Files.WriteInt(@W, mh.h * 65536 + mh.w)
+      Files.WriteString(@W, @mh.name)
+      mh := mh.next
+    end
+    Files.WriteByte(@W, 0FFH)
+    Files.Register(F)
+  else
+    Texts.WriteString(@TW, Fname)
+    Texts.WriteString(@TW, " not found")
+    Texts.WriteLn(@TW)
+    Texts.Append(Oberon.Log, TW.buf)
+  end
+end StoreLib
+
+procedure RemoveLibraries*()
+begin
+  FirstLib := nil
+end RemoveLibraries
+
+procedure ThisMac*(L: Library; const Mname: pointer to array of char): MacHead
+  var mh: MacHead
+begin
+  mh := L.first
+  while (mh # nil) & (mh.name # Mname^) do
+    mh := mh.next
+  end
+  return mh
+end ThisMac
+
+procedure DrawMac*(mh: MacHead; M: ^Msg)
+  var elem: Object
+begin
+  elem := mh.first
+  while elem # nil do
+    elem.do_.draw(elem, M)
+    elem := elem.next
+  end
+end DrawMac
+
+// -------------------- Procedures for designing macros---------------------
+
+procedure OpenMac*(mh: MacHead; G: Graph; x, y: int32)
+  var obj: Object
+begin
+  obj := mh.first
+  while obj # nil do
+    obj.do_.new_()
+    obj.do_.copy_(obj, new_)
+    inc(new_.x, x)
+    inc(new_.y, y)
+    new_.selected := true
+    Add(G, new_)
+    obj := obj.next
+  end
+  new_ := nil
+end OpenMac
+
+procedure MakeMac*(G: Graph; head: ^MacHead)
+  var x0, y0, x1, y1: int32
+    obj, last: Object
+    mh: MacHead
+begin
+  obj := G.first
+  last := nil
+  x0 := 1024
+  x1 := 0
+  y0 := 1024
+  y1 := 0
+  while obj # nil do
+    if obj.selected then
+      obj.do_.new_()
+      obj.do_.copy_(obj, new_)
+      new_.next := last
+      new_.selected := false
+      last := new_
+      if obj.x < x0 then
+        x0 := obj.x
+      end
+      if obj.x + obj.w > x1 then
+        x1 := obj.x + obj.w
+      end
+      if obj.y < y0 then
+        y0 := obj.y
+      end
+      if obj.y + obj.h > y1 then
+        y1 := obj.y + obj.h
+      end
+    end
+    obj := obj.next
+  end
+  obj := last
+  while obj # nil do
+    obj.x := obj.x - x0
+    obj.y := obj.y - y0
+    obj := obj.next
+  end
+  newgc(mh)
+  mh.w := x1 - x0
+  mh.h := y1 - y0
+  mh.first := last
+  mh.ext := nil
+  new_ := nil
+  head^ := mh
+end MakeMac
+
+procedure InsertMac*(mh: MacHead; L: Library; new_: ^boolean)
+  var mh1: MacHead
+begin
+  mh.lib := L
+  mh1 := L.first
+  while (mh1 # nil) & (mh1.name # mh.name) do
+    mh1 := mh1.next
+  end
+  if mh1 = nil then
+    new_^ := true
+    mh.next := L.first
+    L.first := mh
+  else
+    new_^ := false
+    mh1.w := mh.w
+    mh1.h := mh.h
+    mh1.first := mh.first
+  end
+end InsertMac
+
+// ---------------------------- Line Methods -----------------------------
+
+procedure NewLine()
+  var line: Line
+begin
+  newgc(line)
+  new_ := line
+  line.do_ := LineMethod
+end NewLine
+
+procedure CopyLine(src, dst: Object)
+begin
+  dst.x := src.x
+  dst.y := src.y
+  dst.w := src.w
+  dst.h := src.h
+  dst.col := src.col
+end CopyLine
+
+procedure ChangeLine(obj: Object; M: ^Msg)
+begin
+  case M of
+  | PWidMsg:
+    if obj.w < obj.h then
+      if obj.w <= 7 then
+        obj.w := M.w
+      end
+    elsif obj.h <= 7 then
+      obj.h := M.w
+    end
+  | PColorMsg:
+    obj.col := val(byte, M.col)
+  end
+end ChangeLine
+
+procedure LineSelectable(obj: Object; x, y: int32): boolean
+begin
+  return (obj.x <= x) & (x < obj.x + obj.w) & (obj.y <= y) & (y < obj.y + obj.h)
+end LineSelectable
+
+procedure ReadLine(obj: Object; R: ^Files.Rider; C: ^Context)
+begin
+end ReadLine
+
+procedure WriteLine(obj: Object; cno: int32; W: ^Files.Rider; C: ^Context)
+begin
+  WriteObj(W, cno, obj)
+end WriteLine
+
+// ---------------------- Caption Methods ------------------------
+
+procedure NewCaption()
+  var cap_: Caption
+begin
+  newgc(cap_)
+  new_ := cap_
+  cap_.do_ := CapMethod
+end NewCaption
+
+procedure CopyCaption(src, dst: Object)
+  var ch: char
+    R: Texts.Reader
+begin
+  dst.x := src.x
+  dst.y := src.y
+  dst.w := src.w
+  dst.h := src.h
+  dst.col := src.col
+  dst(Caption).pos := T.len_ + 1
+  dst(Caption).len_ := src(Caption).len_
+  Texts.Write(@TW, 0DX)
+  Texts.OpenReader(@R, T, src(Caption).pos)
+  Texts.Read(@R, @ch)
+  TW.fnt := R.fnt
+  while ch > 0DX do
+    Texts.Write(@TW, ch)
+    Texts.Read(@R, @ch)
+  end
+  Texts.Append(T, TW.buf)
+end CopyCaption
+
+procedure ChangeCaption(obj: Object; M: ^Msg)
+  type AnyPtr = pointer to byte 
+  var dx, x1, dy, y1, w, w1, h1, len_, pos: int32
+    ch: char
+    patadr: AnyPtr
+    fnt: Fonts.Font
+    R: Texts.Reader
+begin
+  case M of
+  | PFontMsg:
+    fnt := M.fnt
+    w := 0
+    len_ := 0
+    pos := obj(Caption).pos
+    Texts.OpenReader(@R, T, pos)
+    Texts.Read(@R, @ch)
+    dy := R.fnt.minY
+    while ch > 0DX do
+      Fonts.GetPat(fnt, ch, @dx, @x1, @y1, @w1, @h1, @patadr)
+      inc(w, dx)
+      inc(len_)
+      Texts.Read(@R, @ch)
+    end
+    inc(obj.y, fnt.minY - dy)
+    obj.w := w
+    obj.h := fnt.height
+    Texts.ChangeLooks(T, pos, pos + len_, {0}, fnt, 0, 0)
+  | PColorMsg:
+    obj.col := val(byte, M.col)
+  end
+end ChangeCaption
+
+procedure CaptionSelectable(obj: Object; x, y: int32): boolean
+begin
+  return (obj.x <= x) & (x < obj.x + obj.w) & (obj.y <= y) & (y < obj.y + obj.h)
+end CaptionSelectable
+
+procedure ReadCaption(obj: Object; R: ^Files.Rider; C: ^Context)
+  var ch: char
+    fno: byte
+    len_: int32
+begin
+  obj(Caption).pos := T.len_ + 1
+  Texts.Write(@TW, 0DX)
+  Files.ReadByte(R, @fno)
+  TW.fnt := C.font[fno]
+  len_ := 0
+  Files.Read(R, @ch)
+  while ch > 0DX do
+    Texts.Write(@TW, ch)
+    inc(len_)
+    Files.Read(R, @ch)
+  end
+  obj(Caption).len_ := len_
+  Texts.Append(T, TW.buf)
+end ReadCaption
+
+procedure WriteCaption(obj: Object; cno: int32; W: ^Files.Rider; C: ^Context)
+  var ch: char
+    fno: byte
+    TR: Texts.Reader
+begin
+  if obj(Caption).len_ > 0 then
+    Texts.OpenReader(@TR, T, obj(Caption).pos)
+    Texts.Read(@TR, @ch)
+    fno := val(byte, FontNo(W, C, TR.fnt))
+    WriteObj(W, cno, obj)
+    Files.WriteByte(W, fno)
+    while ch > 0DX do
+      Files.Write(W, ch)
+      Texts.Read(@TR, @ch)
+    end
+    Files.Write(W, 0X)
+  end
+end WriteCaption
+
+// ---------------------- Macro Methods ------------------------
+
+procedure NewMacro()
+  var mac: Macro
+begin
+  newgc(mac)
+  new_ := mac
+  mac.do_ := MacMethod
+end NewMacro
+
+procedure CopyMacro(src, dst: Object)
+begin
+  dst.x := src.x
+  dst.y := src.y
+  dst.w := src.w
+  dst.h := src.h
+  dst.col := src.col
+  dst(Macro).mac := src(Macro).mac
+end CopyMacro
+
+procedure ChangeMacro(obj: Object; M: ^Msg)
+begin
+  case M of
+  | PColorMsg:
+    obj.col := val(byte, M.col)
+  end
+end ChangeMacro
+
+procedure MacroSelectable(obj: Object; x, y: int32): boolean
+begin
+  return (obj.x <= x) & (x <= obj.x + 8) & (obj.y <= y) & (y <= obj.y + 8)
+end MacroSelectable
+
+procedure ReadMacro(obj: Object; R: ^Files.Rider; C: ^Context)
+  var lno: byte
+    name: array 32 of char
+begin
+  Files.ReadByte(R, @lno)
+  Files.ReadString(R, @name, 32)
+  obj(Macro).mac := ThisMac(C.lib[lno], @name)
+end ReadMacro
+
+procedure WriteMacro(obj: Object; cno: int32; W1: ^Files.Rider; C: ^Context)
+  var lno: int32
+begin
+  lno := 0
+  while (lno < C.noflibs) & (obj(Macro).mac.lib # C.lib[lno]) do
+    inc(lno)
+  end
+  if lno = C.noflibs then
+    Files.WriteByte(W1, 0u1)
+    Files.WriteByte(W1, 1u1)
+    Files.WriteByte(W1, val(byte, lno))
+    Files.WriteString(W1, @obj(Macro).mac.lib.name)
+    C.lib[lno] := obj(Macro).mac.lib
+    inc(C.noflibs)
+  end
+  WriteObj(W1, cno, obj)
+  Files.WriteByte(W1, val(byte, lno))
+  Files.WriteString(W1, @obj(Macro).mac.name)
+end WriteMacro
+
+procedure Notify(T: Texts.Text; op: Texts.Op; beg, end_: int32)
+begin
+end Notify
+
+procedure InstallDrawMethods*(drawLine, drawCaption, drawMacro: Handler)
+begin
+  LineMethod.draw := drawLine
+  CapMethod.draw := drawCaption
+  MacMethod.draw := drawMacro
+end InstallDrawMethods
+
+begin
+  Texts.OpenWriter(@W)
+  Texts.OpenWriter(@TW)
+  Texts.OpenWriter(@XW)
+  width := 1
+  GetLib0 := GetLib
+  newgc(T)
+  Texts.Open(T, "")
+  T.notify := Notify
+  newgc(LineMethod)
+  LineMethod.new_ := NewLine
+  LineMethod.copy_ := CopyLine
+  LineMethod.selectable := LineSelectable
+  LineMethod.change := ChangeLine
+  LineMethod.read := ReadLine // LineMethod.print := PrintLine;
+  LineMethod.write := WriteLine
+  newgc(CapMethod)
+  CapMethod.new_ := NewCaption
+  CapMethod.copy_ := CopyCaption
+  CapMethod.selectable := CaptionSelectable
+  CapMethod.change := ChangeCaption
+  CapMethod.read := ReadCaption // CapMethod.print := PrintCaption;
+  CapMethod.write := WriteCaption
+  newgc(MacMethod)
+  MacMethod.new_ := NewMacro
+  MacMethod.copy_ := CopyMacro
+  MacMethod.selectable := MacroSelectable
+  MacMethod.change := ChangeMacro
+  MacMethod.read := ReadMacro // MacMethod.print := PrintMacro
+  MacMethod.write := WriteMacro
+end Graphics.

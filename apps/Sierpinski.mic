@@ -1,0 +1,225 @@
+module Sierpinski [level=5] // NW 15.1.2013 / RK 2026
+
+import Display, Viewers, Oberon, MenuViewers, TextFrames
+
+const
+  Menu = "System.Close  System.Copy  System.Grow"
+
+var
+  x: int32
+  y: int32
+  d: int32
+  A: procedure(i: int32)
+  B: procedure(i: int32)
+  C: procedure(i: int32)
+  D: procedure(i: int32)
+
+procedure E()
+begin
+  Display.ReplConst(Display.white, x, y, d, 1, Display.paint)
+  inc(x, d)
+end E
+
+procedure N()
+begin
+  Display.ReplConst(Display.white, x, y, 1, d, Display.paint)
+  inc(y, d)
+end N
+
+procedure W()
+begin
+  dec(x, d)
+  Display.ReplConst(Display.white, x, y, d, 1, Display.paint)
+end W
+
+procedure S()
+begin
+  dec(y, d)
+  Display.ReplConst(Display.white, x, y, 1, d, Display.paint)
+end S
+
+procedure NE()
+  var i: int32
+begin
+  i := d
+  repeat
+    Display.Dot(Display.white, x, y, Display.paint)
+    inc(x)
+    inc(y)
+    dec(i)
+  until i = 0
+end NE
+
+procedure NW()
+  var i: int32
+begin
+  i := d
+  repeat
+    Display.Dot(Display.white, x, y, Display.paint)
+    dec(x)
+    inc(y)
+    dec(i)
+  until i = 0
+end NW
+
+procedure SW()
+  var i: int32
+begin
+  i := d
+  repeat
+    Display.Dot(Display.white, x, y, Display.paint)
+    dec(x)
+    dec(y)
+    dec(i)
+  until i = 0
+end SW
+
+procedure SE()
+  var i: int32
+begin
+  i := d
+  repeat
+    Display.Dot(Display.white, x, y, Display.paint)
+    inc(x)
+    dec(y)
+    dec(i)
+  until i = 0
+end SE
+
+procedure SA(i: int32)
+begin
+  if i > 0 then
+    A(i - 1)
+    SE()
+    B(i - 1)
+    E()
+    E()
+    D(i - 1)
+    NE()
+    A(i - 1)
+  end
+end SA
+
+procedure SB(i: int32)
+begin
+  if i > 0 then
+    B(i - 1)
+    SW()
+    C(i - 1)
+    S()
+    S()
+    A(i - 1)
+    SE()
+    B(i - 1)
+  end
+end SB
+
+procedure SC(i: int32)
+begin
+  if i > 0 then
+    C(i - 1)
+    NW()
+    D(i - 1)
+    W()
+    W()
+    B(i - 1)
+    SW()
+    C(i - 1)
+  end
+end SC
+
+procedure SD(i: int32)
+begin
+  if i > 0 then
+    D(i - 1)
+    NE()
+    A(i - 1)
+    N()
+    N()
+    C(i - 1)
+    NW()
+    D(i - 1)
+  end
+end SD
+
+procedure DrawSierpinski(F: Display.Frame)
+  var k, n, w, x0, y0: int32
+begin
+  k := 0
+  d := 4
+  if F.W < F.H then
+    w := F.W
+  else
+    w := F.H
+  end
+  while d * 8 < w do
+    d := d * 2
+    inc(k)
+  end
+  Display.ReplConst(Display.black, F.X, F.Y, F.W, F.H, Display.replace)
+  x0 := F.W div 2
+  y0 := F.H div 2 + d
+  n := 0
+  while n < k do
+    inc(n)
+    dec(x0, d)
+    d := d div 2
+    inc(y0, d)
+    x := F.X + x0
+    y := F.Y + y0
+    SA(n)
+    SE()
+    SB(n)
+    SW()
+    SC(n)
+    NW()
+    SD(n)
+    NE()
+  end
+end DrawSierpinski
+
+procedure Handler(F: Display.Frame; M: ^Display.FrameMsg)
+  var F1: Display.Frame
+begin
+  case M of
+  | Oberon.PInputMsg:
+    if M.id = Oberon.track then
+      Oberon.DrawMouseArrow(M.X, M.Y)
+    end
+  | MenuViewers.PModifyMsg:
+    F.Y := M.Y
+    F.H := M.H
+    DrawSierpinski(F)
+  | Oberon.PControlMsg:
+    if M.id = Oberon.neutralize then
+      Oberon.RemoveMarks(F.X, F.Y, F.W, F.H)
+    end
+  | Oberon.PCopyMsg:
+    newgc(F1)
+    F1^ := F^
+    M.F := F1
+  end
+end Handler
+
+procedure New(): Display.Frame
+  var F: Display.Frame
+begin
+  newgc(F)
+  F.handle := Handler
+  return F
+end New
+
+procedure Draw*()
+  var V: Viewers.Viewer
+    X, Y: int32
+begin
+  Oberon.AllocateUserViewer(Oberon.Par.vwr.X, @X, @Y)
+  V := MenuViewers.New(TextFrames.NewMenu("Sierpinski", Menu), New(), TextFrames.menuH, X, Y)
+end Draw
+
+begin
+  A := SA
+  B := SB
+  C := SC
+  D := SD
+end Sierpinski.

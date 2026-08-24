@@ -1,0 +1,233 @@
+module MIC$ // RK 2026
+
+// Freestanding replacement of the built-in MIC$ runtime interface, for a target
+// which has no C library. The operations themselves are implemented in MIC.mic;
+// this module only exists because the generated code refers to the MIC$ names.
+
+import MIC
+
+type _$1 = array of char
+type _$2 = pointer to _$1
+type _$3 = pointer to char
+type _$4 = pointer to uint8
+
+procedure relop1* (lhs: _$2; rhs: _$2; op: int32): uint32
+begin
+  ldarg_0
+  ldarg_1
+  ldarg_2
+  call MIC!relop1
+  ret
+end relop1
+
+procedure relop2* (lhs: _$2; rhs: char; op: int32): uint32
+begin
+  ldarg_0
+  ldarg_1
+  ldarg_2
+  call MIC!relop2
+  ret
+end relop2
+
+procedure relop3* (lhs: char; rhs: _$2; op: int32): uint32
+begin
+  ldarg_0
+  ldarg_1
+  ldarg_2
+  call MIC!relop3
+  ret
+end relop3
+
+procedure relop4* (lhs: char; rhs: char; op: int32): uint32
+begin
+  ldarg_0
+  ldarg_1
+  ldarg_2
+  call MIC!relop4
+  ret
+end relop4
+
+procedure SetDiv* (lhs: uint32; rhs: uint32): uint32
+begin
+  ldarg_0
+  ldarg_1
+  call MIC!SetDiv
+  ret
+end SetDiv
+
+procedure SetIn* (lhs: uint32; rhs: uint32): uint32
+begin
+  ldarg_0
+  ldarg_1
+  call MIC!SetIn
+  ret
+end SetIn
+
+procedure SetRange* (lhs: uint32; rhs: uint32): uint32
+begin
+  ldarg_0
+  ldarg_1
+  call MIC!SetRange
+  ret
+end SetRange
+
+procedure printI8* (i: int64)
+begin
+  ldarg_0
+  call MIC!printI8
+  ret
+end printI8
+
+procedure printU8* (u: uint64)
+begin
+  ldarg_0
+  call MIC!printU8
+  ret
+end printU8
+
+procedure printF8* (f: float64)
+begin
+  ldarg_0
+  call MIC!printF8
+  ret
+end printF8
+
+procedure printStr* (s: _$2)
+begin
+  ldarg_0
+  call MIC!printStr
+  ret
+end printStr
+
+procedure printCh* (c: char)
+begin
+  ldarg_0
+  call MIC!printCh
+  ret
+end printCh
+
+procedure printBool* (b: uint8)
+begin
+  ldarg_0
+  call MIC!printBool
+  ret
+end printBool
+
+procedure printSet* (s: uint32)
+begin
+  ldarg_0
+  call MIC!printSet
+  ret
+end printSet
+
+procedure assert* (cond: uint8; line: uint32; file: _$2)
+begin
+  ldarg_0
+  ldarg_1
+  ldarg_2
+  call MIC!assert
+  ret
+end assert
+
+procedure exit* (res: int32)
+begin
+  ldarg_0
+  call MIC!Halt
+  ret
+end exit
+
+procedure strlen* (str: _$3): uint32
+begin
+  ldarg_0
+  call MIC!strlen
+  ret
+end strlen
+
+procedure strcpy* (to: _$3; from: _$3; n: int32)
+begin
+  ldarg_0
+  ldarg_1
+  ldarg_2
+  call MIC!strcpy
+  ret
+end strcpy
+
+procedure alloc* (size: uint32): _$4
+begin
+  ldarg_0
+  call MIC!Alloc
+  ret
+end alloc
+
+procedure calloc* (size: uint32): _$4
+begin
+  ldarg_0
+  call MIC!Zero
+  ret
+end calloc
+
+procedure gcalloc* (size: uint32): _$4
+begin
+  ldarg_0
+  call MIC!GcAlloc
+  ret
+end gcalloc
+
+procedure free* (ptr: _$4)
+begin
+  ldarg_0
+  call MIC!Free
+  ret
+end free
+
+procedure obdiv32* (x, y: int32): int32
+begin
+  ldarg_0
+  ldarg_1
+  div       // q = x div y, truncated
+  ldarg_0
+  ldarg_1
+  rem       // r = x rem y
+  ldc_i4_0
+  ceq       // r = 0
+  ldc_i4_1
+  xor       // r # 0
+  ldarg_0
+  ldarg_1
+  xor       // sign bit set iff signs differ
+  ldc_i4_0
+  clt       // (x xor y) < 0
+  and       // adjust = (r # 0) and (signs differ)
+  sub       // q - adjust
+  ret
+end obdiv32
+
+procedure obmod32* (x, y: int32): int32
+begin
+  ldarg_0
+  ldarg_1
+  rem       // r = x rem y
+  ldarg_0
+  ldarg_1
+  rem
+  ldc_i4_0
+  ceq
+  ldc_i4_1
+  xor       // r # 0
+  ldarg_0
+  ldarg_1
+  xor
+  ldc_i4_0
+  clt       // (x xor y) < 0
+  and       // adjust
+  ldarg_1
+  mul       // adjust * y
+  add       // r + adjust * y
+  ret
+end obmod32
+
+// obdiv64/obmod64 are omitted: they need the 64 bit div/rem helpers (__mic$div_i8,
+// __mic$rem_i8) which only exist in the C runtime, not available on a freestanding target
+
+
+end MIC$

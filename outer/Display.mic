@@ -1,0 +1,312 @@
+module Display [level=4] // NW 5.11.2013 / 3.7.2016 / RK 2026
+import SYS
+
+type
+  AnyPtr = pointer to byte // helper type for Oberon addresses
+  Int32Ptr = pointer to int32 // helper type for a variable reinterpreted by SYSTEM.VAL
+  Words* = pointer to set // 32 pixels of a display line, one bit per pixel
+  Pattern* = pointer to byte // width (< 32), height, then one to four raster bytes per line
+
+const
+  black* = 0 // black = background
+  white* = 1
+  replace* = 0 // modes
+  paint* = 1
+  invert* = 2
+  memLimAdr = 010H // end of RAM; the display frame follows it, see Design.md
+  W = 32i4 // pixels per display word
+  L = 1024 div W // display words per line
+
+type
+  Frame* = pointer to FrameDesc
+  FrameMsg* = object
+  end
+  PFrameMsg* = pointer to FrameMsg
+  Handler* = procedure(F: Frame; M: pointer to FrameMsg)
+  FrameDesc* = object
+    next*, dsc*: Frame
+    X*, Y*, W*, H*: int32
+    handle*: Handler
+  end
+
+var
+  Base*: Words
+  Width*, Height*: int32
+  arrow*, star*, hook*, updown*, block*, cross*, grey*: Pattern
+  // a pattern is an array of bytes; the first is its width (< 32), the second its height, the rest the raster
+  arrowP, starP, crossP, hookP, updownP, blockP, greyP: array 64 of byte
+
+procedure Handle*(F: Frame; M: ^FrameMsg)
+begin
+  if (F # nil) & (F.handle # nil) then
+    F.handle(F, M)
+  end
+end Handle
+
+// raster ops
+
+procedure word(x: int32): int32 inline
+  // the number of the display word which holds the pixel x within its line;
+  // obdiv and obmod here and below, because x may be negative when a frame is clipped
+begin
+  return obdiv(x, W)
+end word
+
+procedure adr(x, y: int32): Words inline
+  // the display word which holds the pixel x, y
+begin
+  return ptroff(Base, y * L + word(x))
+end adr
+
+procedure rot(s: set; n: int32): set inline
+  // the pixels of a display word rotated left by n, and right if n is negative
+begin
+  return bset(usig(SYS.ROT(sigc(ord(s)), n)))
+end rot
+
+procedure Dot*(col, x, y, mode: int32)
+  var a: Words; s: set
+begin
+  a := adr(x, y)
+  s := {obmod(x, W)}
+  if mode = paint then
+    a^ := a^ + s
+  elsif mode = invert then
+    a^ := a^ / s
+  else // mode = replace
+    if col # black then
+      a^ := a^ + s
+    else
+      a^ := a^ - s
+    end
+  end
+end Dot
+
+procedure ReplConst*(col, x, y, w, h, mode: int32)
+  var al, a: Words
+    nw: int32 // the last of the display words the block spans, relative to the first
+    left, right, mid: set
+    i, j: int32
+begin
+  al := adr(x, y)
+  nw := word(x + w - 1) - word(x)
+  if nw = 0 then
+    mid := {obmod(x, W)..obmod(x + w - 1, W)}
+    for i := 0 to h - 1 do
+      a := ptroff(al, i * L)
+      if mode = invert then
+        a^ := a^ / mid
+      elsif (mode = replace) & (col = black) then // erase
+        a^ := a^ - mid
+      else // (mode = paint) or (mode = replace) & (col # black)
+        a^ := a^ + mid
+      end
+    end
+  elsif nw > 0 then
+    left := {obmod(x, W)..W - 1}
+    right := {0..obmod(x + w - 1, W)}
+    for i := 0 to h - 1 do
+      a := ptroff(al, i * L)
+      if mode = invert then
+        a^ := a^ / left
+        for j := 1 to nw - 1 do
+          ptroff(a, j)^ := -ptroff(a, j)^
+        end
+        ptroff(a, nw)^ := ptroff(a, nw)^ / right
+      elsif (mode = replace) & (col = black) then // erase
+        a^ := a^ - left
+        for j := 1 to nw - 1 do
+          ptroff(a, j)^ := {}
+        end
+        ptroff(a, nw)^ := ptroff(a, nw)^ - right
+      else // (mode = paint) or (mode = replace) & (col # black)
+        a^ := a^ + left
+        for j := 1 to nw - 1 do
+          ptroff(a, j)^ := {0..W - 1}
+        end
+        ptroff(a, nw)^ := ptroff(a, nw)^ + right
+      end
+    end
+  end
+end ReplConst
+
+procedure CopyPattern*(col: int32; patadr: Pattern; x, y, mode: int32) // only for modes = paint, invert
+  var pat: Pattern
+    al, a: Words
+    pwd: uint32 // the pattern line, right aligned; w < 32
+    k: int32 // the bit position of x in its display word
+    w, h, i: int32
+begin
+  w := +patadr^ 
+  h := +ptroff(patadr, 1)^ 
+  pat := ptroff(patadr, 2)
+  k := obmod(x, W)
+  al := adr(x, y)
+  for i := 0 to h - 1 do
+    a := ptroff(al, i * L)
+    // build pattern line
+    pwd := pat^
+    inc(pat)
+    if w > 8 then
+      pwd := pwd + shl(pat^, 8)
+      inc(pat)
+      if w > 16 then
+        pwd := pwd + shl(pat^, 16)
+        inc(pat)
+        if w > 24 then
+          pwd := pwd + shl(pat^, 24)
+          inc(pat)
+        end
+      end
+    end
+    if mode = invert then
+      a^ := a^ / bset(shl(pwd, usig(k)))
+    else
+      a^ := a^ + bset(shl(pwd, usig(k)))
+    end
+    if k + w > W then // spill over
+      if mode = invert then
+        ptroff(a, 1)^ := ptroff(a, 1)^ / bset(shr(pwd, usig(W - k)))
+      else
+        ptroff(a, 1)^ := ptroff(a, 1)^ + bset(shr(pwd, usig(W - k)))
+      end
+    end
+  end
+end CopyPattern
+
+procedure CopyBlock*(sx, sy, w, h, dx, dy, mode: int32) // only for mode = replace
+  var sa, sa0, limit: Words
+    d, wlen: int32 // displacement and line length in display words
+    sb, db, db1: int32 // bit position of sx, of dx, and of dx + w in their display word
+    n, step, j: int32
+    src, dst, spill: set
+    m0, m1, m2, m3: set
+begin
+  sb := obmod(sx, W)
+  db := obmod(dx, W)
+  db1 := obmod(dx + w, W)
+  sa := adr(sx, sy)
+  d := (word(dx) - word(sx)) + (dy - sy) * L
+  n := sb - db
+  wlen := word(sx + w) - word(sx)
+  m0 := {db..W - 1}
+  m2 := {db1..W - 1}
+  m3 := m0 / m2
+  if d >= 0 then // copy up, scan down
+    sa0 := ptroff(sa, (h - 1) * L)
+    limit := ptroff(sa, -L)
+    step := -L
+  else // copy down, scan up
+    sa0 := sa
+    limit := ptroff(sa, h * L)
+    step := L
+  end
+  while sa0 # limit do
+    if n >= 0 then // shift right
+      m1 := {n..W - 1}
+      if db + w >= W then
+        src := rot(ptroff(sa0, wlen)^, -n)
+        dst := ptroff(sa0, wlen + d)^
+        ptroff(sa0, wlen + d)^ := dst * m2 + (src - m2)
+        spill := src - m1
+        for j := wlen - 1 to 1 by -1 do
+          src := rot(ptroff(sa0, j)^, -n)
+          ptroff(sa0, j + d)^ := spill + src * m1
+          spill := src - m1
+        end
+        src := rot(sa0^, -n)
+        dst := ptroff(sa0, d)^
+        ptroff(sa0, d)^ := src * m0 + (dst - m0)
+      else
+        src := rot(sa0^, -n)
+        dst := ptroff(sa0, d)^
+        ptroff(sa0, d)^ := src * m3 + (dst - m3)
+      end
+    else // shift left
+      m1 := {-n..W - 1}
+      src := rot(sa0^, -n)
+      dst := ptroff(sa0, d)^
+      if db + w < W then
+        ptroff(sa0, d)^ := dst - m3 + src * m3
+      else
+        ptroff(sa0, d)^ := dst - m0 + src * m0
+        spill := src - m1
+        for j := 1 to wlen - 1 do
+          src := rot(ptroff(sa0, j)^, -n)
+          ptroff(sa0, j + d)^ := spill + src * m1
+          spill := src - m1
+        end
+        src := rot(ptroff(sa0, wlen)^, -n)
+        dst := ptroff(sa0, wlen + d)^
+        ptroff(sa0, wlen + d)^ := src - m2 + dst * m2
+      end
+    end
+    inc(sa0, step)
+  end
+end CopyBlock
+
+procedure ReplPattern*(col: int32; patadr: Pattern; x, y, w, h, mode: int32)
+  // pattern width = 32, fixed; pattern starts at patadr+4, for mode = invert only
+  var al, a: Words
+    pat, pta0, pta1: Words // the pattern lines, the current one and the end
+    nw: int32 // the last of the display words the block spans, relative to the first
+    left, right, mid, pix, ptw: set
+    i, j: int32
+begin
+  pat := ptroff(cast(Words, patadr), 1)
+  pta0 := pat
+  pta1 := ptroff(pat, +ptroff(patadr, 1)^) 
+  al := adr(x, y)
+  nw := word(x + w - 1) - word(x)
+  if nw = 0 then
+    mid := {obmod(x, W)..obmod(x + w - 1, W)}
+    for i := 0 to h - 1 do
+      a := ptroff(al, i * L)
+      pix := a^
+      ptw := pta0^
+      a^ := pix - mid + pix / ptw * mid
+      inc(pta0)
+      if pta0 = pta1 then
+        pta0 := pat
+      end
+    end
+  elsif nw > 0 then
+    left := {obmod(x, W)..W - 1}
+    right := {0..obmod(x + w - 1, W)}
+    for i := 0 to h - 1 do
+      a := ptroff(al, i * L)
+      ptw := pta0^
+      pix := a^
+      a^ := pix - left + pix / ptw * left
+      for j := 1 to nw - 1 do
+        ptroff(a, j)^ := ptroff(a, j)^ / ptw
+      end
+      pix := ptroff(a, nw)^
+      ptroff(a, nw)^ := pix - right + pix / ptw * right
+      inc(pta0)
+      if pta0 = pta1 then
+        pta0 := pat
+      end
+    end
+  end
+end ReplPattern
+
+begin
+  Base := cast(Words, ptroff(AnyPtr{0}, Int32Ptr{memLimAdr}^ + 16))
+  Width := 1024
+  Height := 768
+  arrowP := $0F0F 0060 0070 0038 001C 000E 0007 8003 C101 E300 7700 3F00 1F00 3F00 7F00 FF00$
+  starP := $0F0F 8000 8220 8410 8808 9004 A002 C001 7F7F C001 A002 9004 8808 8410 8220 8000$
+  hookP := $0C0C 070F 8707 C703 E701 F700 7F00 3F00 1F00 0F00 0700 0300 0100$
+  updownP := $080E 183C 7EFF 1818 1818 1818 FF7E3C18$
+  blockP := $0808 FFFF C3C3 C3C3 FFFF$
+  crossP := $0F0F 0140 0220 0410 0808 1004 2002 4001 0000 4001 2002 1004 0808 0410 0220 0140$
+  greyP := $2002 0000 5555 5555 AAAA AAAA$
+  arrow := @arrowP[0]
+  star := @starP[0]
+  hook := @hookP[0]
+  updown := @updownP[0]
+  block := @blockP[0]
+  cross := @crossP[0]
+  grey := @greyP[0]
+end Display.

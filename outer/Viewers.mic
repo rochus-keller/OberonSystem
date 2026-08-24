@@ -1,0 +1,372 @@
+module Viewers [level=5] // JG 14.9.90 / NW 15.9.2013 / RK 2026
+
+import Display
+
+const
+  inf = 65535
+
+type
+  MsgId* = (restore, modify, suspend) // the kinds of a ViewerMsg
+
+  Viewer* = pointer to ViewerDesc
+  ViewerDesc* = object (Display.FrameDesc)
+    state*: int32
+  end
+
+  // state > 1: displayed; state = 1: filler; state = 0: closed; state < 0: suspended
+
+  ViewerMsg* = object (Display.FrameMsg)
+    id*: MsgId
+    X*, Y*, W*, H*: int32
+    state*: int32
+  end
+  PViewerMsg* = pointer to ViewerMsg
+
+  Track = pointer to TrackDesc
+  TrackDesc = object (ViewerDesc)
+    under: Display.Frame
+  end
+
+var
+  curW*, minH*: int32
+  DH: int32
+  FillerTrack: Track
+  FillerViewer: Viewer
+  backup: Viewer // last closed viewer
+
+procedure Open*(V: Viewer; X, Y: int32)
+  var T, u, v: Display.Frame
+    M: ViewerMsg
+begin
+  if (V.state = 0) & (X < inf) then
+    if Y > DH then
+      Y := DH
+    end
+    T := FillerTrack.next
+    while X >= T.X + T.W do
+      T := T.next
+    end
+    u := T.dsc
+    v := u.next
+    while Y > v.Y + v.H do
+      u := v
+      v := u.next
+    end
+    if Y < v.Y + minH then
+      Y := v.Y + minH
+    end
+    if (v.next.Y # 0) & (Y > v.Y + v.H - minH) then
+      V.X := T.X
+      V.W := T.W
+      V.Y := v.Y
+      V.H := v.H
+      M.id := suspend
+      M.state := 0
+      v.handle(v, @M)
+      v(Viewer).state := 0
+      V.next := v.next
+      u.next := V
+      V.state := 2
+    else
+      V.X := T.X
+      V.W := T.W
+      V.Y := v.Y
+      V.H := Y - v.Y
+      M.id := modify
+      M.Y := Y
+      M.H := v.Y + v.H - Y
+      v.handle(v, @M)
+      v.Y := M.Y
+      v.H := M.H
+      V.next := v
+      u.next := V
+      V.state := 2
+    end
+  end
+end Open
+
+procedure Change*(V: Viewer; Y: int32)
+  var v: Display.Frame
+    M: ViewerMsg
+begin
+  if V.state > 1 then
+    if Y > DH then
+      Y := DH
+    end
+    v := V.next
+    if (v.next.Y # 0) & (Y > v.Y + v.H - minH) then
+      Y := v.Y + v.H - minH
+    end
+    if Y >= V.Y + minH then
+      M.id := modify
+      M.Y := Y
+      M.H := v.Y + v.H - Y
+      v.handle(v, @M)
+      v.Y := M.Y
+      v.H := M.H
+      V.H := Y - V.Y
+    end
+  end
+end Change
+
+procedure RestoreTrack(S: Display.Frame)
+  var T, t, v: Display.Frame
+    M: ViewerMsg
+begin
+  t := S.next
+  while t.next # S do
+    t := t.next
+  end
+  T := S(Track).under
+  while T.next # nil do
+    T := T.next
+  end
+  t.next := S(Track).under
+  T.next := S.next
+  M.id := restore
+  repeat
+    t := t.next
+    v := t.dsc
+    repeat
+      v := v.next
+      v.handle(v, @M)
+      v(Viewer).state := -v(Viewer).state
+    until v = t.dsc
+  until t = T
+end RestoreTrack
+
+procedure Close*(V: Viewer)
+  var T, U: Display.Frame
+    M: ViewerMsg
+begin
+  if V.state > 1 then
+    U := V.next
+    T := FillerTrack
+    repeat
+      T := T.next
+    until V.X < T.X + T.W
+    if (T(Track).under = nil) or (U.next # V) then
+      M.id := suspend
+      M.state := 0
+      V.handle(V, @M)
+      V.state := 0
+      backup := V
+      M.id := modify
+      M.Y := V.Y
+      M.H := V.H + U.H
+      U.handle(U, @M)
+      U.Y := M.Y
+      U.H := M.H
+      while U.next # V do
+        U := U.next
+      end
+      U.next := V.next
+    else
+      // close track
+      M.id := suspend
+      M.state := 0
+      V.handle(V, @M)
+      V.state := 0
+      backup := V
+      U.handle(U, @M)
+      U(Viewer).state := 0
+      RestoreTrack(T)
+    end
+  end
+end Close
+
+procedure Recall*(V: ^Viewer)
+begin
+  V^ := backup
+end Recall
+
+procedure This*(X, Y: int32): Viewer
+  var T, V: Display.Frame
+begin
+  if (X < inf) & (Y < DH) then
+    T := FillerTrack
+    repeat
+      T := T.next
+    until X < T.X + T.W
+    V := T.dsc
+    repeat
+      V := V.next
+    until Y < V.Y + V.H
+  else
+    V := nil
+  end
+  return V(Viewer)
+end This
+
+procedure Next*(V: Viewer): Viewer
+begin
+  return V.next(Viewer)
+end Next
+
+procedure Locate*(X, H: int32; fil, bot, alt, max_: ^Display.Frame)
+  var T, V: Display.Frame
+begin
+  if X < inf then
+    T := FillerTrack
+    repeat
+      T := T.next
+    until X < T.X + T.W
+    fil^ := T.dsc
+    bot^ := fil^.next
+    if bot^.next # fil^ then
+      alt^ := bot^.next
+      V := alt^.next
+      while (V # fil^) & (alt^.H < H) do
+        if V.H > alt^.H then
+          alt^ := V
+        end
+        V := V.next
+      end
+    else
+      alt^ := bot^
+    end
+    max_^ := T.dsc
+    V := max_^.next
+    while V # fil^ do
+      if V.H > max_^.H then
+        max_^ := V
+      end
+      V := V.next
+    end
+  end
+end Locate
+
+procedure InitTrack*(W, H: int32; Filler: Viewer)
+  var S: Display.Frame
+    T: Track
+begin
+  if Filler.state = 0 then
+    Filler.X := curW
+    Filler.W := W
+    Filler.Y := 0
+    Filler.H := H
+    Filler.state := 1
+    Filler.next := Filler
+    newgc(T)
+    T.X := curW
+    T.W := W
+    T.Y := 0
+    T.H := H
+    T.dsc := Filler
+    T.under := nil
+    FillerViewer.X := curW + W
+    FillerViewer.W := inf - FillerViewer.X
+    FillerTrack.X := FillerViewer.X
+    FillerTrack.W := FillerViewer.W
+    S := FillerTrack
+    while S.next # FillerTrack do
+      S := S.next
+    end
+    S.next := T
+    T.next := FillerTrack
+    curW := curW + W
+  end
+end InitTrack
+
+procedure OpenTrack*(X, W: int32; Filler: Viewer)
+  var newT: Track
+    S, T, t, v: Display.Frame
+    M: ViewerMsg
+begin
+  if (X < inf) & (Filler.state = 0) then
+    S := FillerTrack
+    T := S.next
+    while X >= T.X + T.W do
+      S := T
+      T := S.next
+    end
+    while X + W > T.X + T.W do
+      T := T.next
+    end
+    M.id := suspend
+    t := S
+    repeat
+      t := t.next
+      v := t.dsc
+      repeat
+        v := v.next
+        M.state := -v(Viewer).state
+        v.handle(v, @M)
+        v(Viewer).state := M.state
+      until v = t.dsc
+    until t = T
+    Filler.X := S.next.X
+    Filler.W := T.X + T.W - S.next.X
+    Filler.Y := 0
+    Filler.H := DH
+    Filler.state := 1
+    Filler.next := Filler
+    newgc(newT)
+    newT.X := Filler.X
+    newT.W := Filler.W
+    newT.Y := 0
+    newT.H := DH
+    newT.dsc := Filler
+    newT.under := S.next
+    S.next := newT
+    newT.next := T.next
+    T.next := nil
+  end
+end OpenTrack
+
+procedure CloseTrack*(X: int32)
+  var T, V: Display.Frame
+    M: ViewerMsg
+begin
+  if X < inf then
+    T := FillerTrack
+    repeat
+      T := T.next
+    until X < T.X + T.W
+    if T(Track).under # nil then
+      M.id := suspend
+      M.state := 0
+      V := T.dsc
+      repeat
+        V := V.next
+        V.handle(V, @M)
+        V(Viewer).state := 0
+      until V = T.dsc
+      RestoreTrack(T)
+    end
+  end
+end CloseTrack
+
+procedure Broadcast*(M: ^Display.FrameMsg)
+  var T, V: Display.Frame
+begin
+  T := FillerTrack.next
+  while T # FillerTrack do
+    V := T.dsc
+    repeat
+      V := V.next
+      V.handle(V, M)
+    until V = T.dsc
+    T := T.next
+  end
+end Broadcast
+
+begin
+  backup := nil
+  curW := 0
+  minH := 1
+  DH := Display.Height
+  newgc(FillerViewer)
+  FillerViewer.X := 0
+  FillerViewer.W := inf
+  FillerViewer.Y := 0
+  FillerViewer.H := DH
+  FillerViewer.next := FillerViewer
+  newgc(FillerTrack)
+  FillerTrack.X := 0
+  FillerTrack.W := inf
+  FillerTrack.Y := 0
+  FillerTrack.H := DH
+  FillerTrack.dsc := FillerViewer
+  FillerTrack.next := FillerTrack
+end Viewers.

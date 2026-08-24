@@ -1,0 +1,405 @@
+module Curves [level=5] // NW 8.11.90 / 18.4.2013 / RK 2026
+
+import Display, Files, Oberon, Graphics, GraphicFrames
+
+type
+  Curve* = pointer to CurveDesc
+
+  CurveDesc* = object (Graphics.ObjectDesc)
+    kind*, lw*: int32
+  end
+
+// kind: 0 = up-line, 1 = down-line, 2 = circle, 3 = ellipse
+
+var
+  method*: Graphics.Method
+
+procedure Dot(f: GraphicFrames.Frame; col, x, y: int32)
+begin
+  if (x >= f.X) & (x + 7 < f.X1) & (y >= f.Y) & (x + 7 < f.Y1) then
+    Display.Dot(col, x, y, Display.replace)
+  end
+end Dot
+
+procedure mark(f: GraphicFrames.Frame; col, x, y: int32)
+begin
+  dec(x, 3)
+  dec(y, 3)
+  if (x >= f.X) & (x + 7 < f.X1) & (y >= f.Y) & (y + 7 < f.Y1) then
+    if col = Display.black then
+      Display.ReplConst(Display.black, x, y, 7, 7, Display.replace)
+    else
+      Display.CopyPattern(col, GraphicFrames.tack, x, y, Display.replace)
+    end
+  end
+end mark
+
+procedure line(f: GraphicFrames.Frame; col: int32; x, y, w, h, d: int32)
+  var x1, y1, u: int32
+begin
+  if h < w then
+    x1 := x + w
+    u := (h - w) div 2
+    if d = -1 then
+      inc(y, h)
+    end
+    while x < x1 do
+      Dot(f, col, x, y)
+      inc(x)
+      if u < 0 then
+        inc(u, h)
+      else
+        inc(u, h - w)
+        inc(y, d)
+      end
+    end
+  else
+    y1 := y + h
+    u := (w - h) div 2
+    if d = -1 then
+      inc(x, w)
+    end
+    while y < y1 do
+      Dot(f, col, x, y)
+      inc(y)
+      if u < 0 then
+        inc(u, w)
+      else
+        inc(u, w - h)
+        inc(x, d)
+      end
+    end
+  end
+end line
+
+procedure circle(f: GraphicFrames.Frame; col: int32; x0, y0, r: int32)
+  var x, y, u: int32
+begin
+  u := 1 - r
+  x := r
+  y := 0
+  while y <= x do
+    Dot(f, col, x0 + x, y0 + y)
+    Dot(f, col, x0 + y, y0 + x)
+    Dot(f, col, x0 - y, y0 + x)
+    Dot(f, col, x0 - x, y0 + y)
+    Dot(f, col, x0 - x, y0 - y)
+    Dot(f, col, x0 - y, y0 - x)
+    Dot(f, col, x0 + y, y0 - x)
+    Dot(f, col, x0 + x, y0 - y)
+    if u < 0 then
+      inc(u, 2 * y + 3)
+    else
+      inc(u, 2 * (y - x) + 5)
+      dec(x)
+    end
+    inc(y)
+  end
+end circle
+
+procedure ellipse(f: GraphicFrames.Frame; col: int32; x0, y0, a, b: int32)
+  var x, y, y1, aa, bb, d, g, h: int32
+begin
+  aa := a * a
+  bb := b * b
+  h := aa div 4 - b * aa + bb
+  g := 9 * aa div 4 - 3 * b * aa + bb
+  x := 0
+  y := b
+  while g < 0 do
+    Dot(f, col, x0 + x, y0 + y)
+    Dot(f, col, x0 - x, y0 + y)
+    Dot(f, col, x0 - x, y0 - y)
+    Dot(f, col, x0 + x, y0 - y)
+    if h < 0 then
+      d := (2 * x + 3) * bb
+      inc(g, d)
+    else
+      d := (2 * x + 3) * bb - 2 * (y - 1) * aa
+      inc(g, d + 2 * aa)
+      dec(y)
+    end
+    inc(h, d)
+    inc(x)
+  end
+  y1 := y
+  h := bb div 4 - a * bb + aa
+  x := a
+  y := 0
+  while y <= y1 do
+    Dot(f, col, x0 + x, y0 + y)
+    Dot(f, col, x0 - x, y0 + y)
+    Dot(f, col, x0 - x, y0 - y)
+    Dot(f, col, x0 + x, y0 - y)
+    if h < 0 then
+      inc(h, (2 * y + 3) * aa)
+    else
+      inc(h, (2 * y + 3) * aa - 2 * (x - 1) * bb)
+      dec(x)
+    end
+    inc(y)
+  end
+end ellipse
+
+
+procedure New*()
+  var c: Curve
+begin
+  newgc(c)
+  c.do_ := method
+  Graphics.New(c)
+end New
+
+procedure Copy(src: Graphics.Object; dst: Graphics.Object)
+begin
+  dst.x := src.x
+  dst.y := src.y
+  dst.w := src.w
+  dst.h := src.h
+  dst.col := src.col
+  dst(Curve).kind := src(Curve).kind
+  dst(Curve).lw := src(Curve).lw
+end Copy
+
+procedure Draw(obj: Graphics.Object; M: pointer to Graphics.Msg)
+  var x, y, w, h, col: int32
+    f: GraphicFrames.Frame
+begin
+  case M of
+  | GraphicFrames.PDrawMsg:
+    x := obj.x + M.x
+    y := obj.y + M.y
+    w := obj.w
+    h := obj.h
+    f := M.f
+    if M.col = Display.black then
+      col := +obj.col
+    else
+      col := M.col
+    end
+    if (x < f.X1) & (f.X <= x + w) & (y < f.Y1) & (f.Y <= y + h) then
+      if obj(Curve).kind = 0 then // up-line
+        if M.mode = 0 then
+          if obj.selected then
+            mark(f, Display.white, x, y)
+          end
+          line(f, col, x, y, w, h, 1)
+        elsif M.mode = 1 then
+          mark(f, Display.white, x, y)
+        elsif M.mode = 2 then
+          mark(f, f.col, x, y)
+        elsif M.mode = 3 then
+          mark(f, Display.black, x, y)
+          line(f, Display.black, x, y, w, h, 1)
+        end
+      elsif obj(Curve).kind = 1 then // down-line
+        if M.mode = 0 then
+          if obj.selected then
+            mark(f, Display.white, x, y + h)
+          end
+          line(f, col, x, y, w, h, -1)
+        elsif M.mode = 1 then
+          mark(f, Display.white, x, y + h)
+        elsif M.mode = 2 then
+          mark(f, f.col, x, y + h)
+        elsif M.mode = 3 then
+          mark(f, Display.black, x, y + h)
+          line(f, Display.black, x, y, w, h, -1)
+        end
+      elsif obj(Curve).kind = 2 then // circle
+        w := w div 2
+        if M.mode = 0 then
+          if obj.selected then
+            mark(f, Display.white, x + w, y)
+          end
+          circle(f, col, x + w, y + w, w)
+        elsif M.mode = 1 then
+          mark(f, Display.white, x + w, y)
+        elsif M.mode = 2 then
+          mark(f, f.col, x + w, y)
+        elsif M.mode = 3 then
+          mark(f, Display.black, x + w, y)
+          circle(f, Display.black, x + w, y + w, w)
+        end
+      elsif obj(Curve).kind = 3 then // ellipse
+        w := w div 2
+        h := h div 2
+        if M.mode = 0 then
+          if obj.selected then
+            mark(f, Display.white, x + w, y)
+          end
+          ellipse(f, col, x + w, y + h, w, h)
+        elsif M.mode = 1 then
+          mark(f, Display.white, x + w, y)
+        elsif M.mode = 2 then
+          mark(f, f.col, x + w, y)
+        elsif M.mode = 3 then
+          mark(f, Display.black, x + w, y)
+          ellipse(f, Display.black, x + w, y + h, w, h)
+        end
+      end
+    end
+  end
+end Draw
+
+procedure Selectable(obj: Graphics.Object; x, y: int32): boolean
+  var xm, y0, w, h: int32
+    res: boolean
+begin
+  if obj(Curve).kind <= 1 then // line
+    w := obj.w
+    h := obj.h
+    if obj(Curve).kind = 1 then
+      y0 := obj.y + h
+      h := -h
+    else
+      y0 := obj.y
+    end
+    res := (obj.x <= x) & (x < obj.x + w) & (abs(y - y0) * w - (x - obj.x) * h < w * 4)
+  else // circle or ellipse
+    xm := obj.w div 2 + obj.x
+    res := (xm - 4 <= x) & (x <= xm + 4) & (obj.y - 4 <= y) & (y <= obj.y + 4)
+  end
+  return res
+end Selectable
+
+procedure Change(obj: Graphics.Object; M: pointer to Graphics.Msg)
+begin
+  case M of
+  | Graphics.PColorMsg:
+    obj.col := val(byte, M.col)
+  end
+end Change
+
+procedure Read(obj: Graphics.Object; R: ^Files.Rider; C: ^Graphics.Context)
+  var len_: byte
+begin
+  Files.ReadByte(R, @len_)
+  Files.ReadByte(R, @len_)
+  obj(Curve).kind := +len_
+  Files.ReadByte(R, @len_)
+  obj(Curve).lw := +len_
+end Read
+
+procedure Write(obj: Graphics.Object; cno: int32; W: ^Files.Rider; C: ^Graphics.Context)
+begin
+  Graphics.WriteObj(W, cno, obj)
+  Files.WriteByte(W, 2u1)
+  Files.WriteByte(W, val(byte, obj(Curve).kind))
+  Files.WriteByte(W, val(byte, obj(Curve).lw))
+end Write
+
+procedure MakeLine*() // command
+  var x0, x1, y0, y1: int32
+    c: Curve
+    G: GraphicFrames.Frame
+begin
+  G := GraphicFrames.Focus()
+  if (G # nil) & (G.mark.next # nil) then
+    GraphicFrames.Deselect(G)
+    x0 := G.mark.x
+    y0 := G.mark.y
+    x1 := G.mark.next.x
+    y1 := G.mark.next.y
+    newgc(c)
+    c.col := val(byte, Oberon.CurCol)
+    c.w := abs(x1 - x0)
+    c.h := abs(y1 - y0)
+    c.lw := Graphics.width
+    if x0 <= x1 then
+      c.x := x0
+      if y0 <= y1 then
+        c.kind := 0
+        c.y := y0
+      else
+        c.kind := 1
+        c.y := y1
+      end
+    else
+      c.x := x1
+      if y1 < y0 then
+        c.kind := 0
+        c.y := y1
+      else
+        c.kind := 1
+        c.y := y0
+      end
+    end
+    dec(c.x, G.x)
+    dec(c.y, G.y)
+    c.do_ := method
+    Graphics.Add(G.graph, c)
+    GraphicFrames.Defocus(G)
+    GraphicFrames.DrawObj(G, c)
+  end
+end MakeLine
+
+procedure MakeCircle*() // command
+  var x0, y0, r: int32
+    c: Curve
+    G: GraphicFrames.Frame
+begin
+  G := GraphicFrames.Focus()
+  if (G # nil) & (G.mark.next # nil) then
+    GraphicFrames.Deselect(G)
+    x0 := G.mark.x
+    y0 := G.mark.y
+    r := abs(G.mark.next.x - x0)
+    if r > 4 then
+      newgc(c)
+      c.x := x0 - r - G.x
+      c.y := y0 - r - G.y
+      c.w := 2 * r + 1
+      c.h := c.w
+      c.kind := 2
+      c.col := val(byte, Oberon.CurCol)
+      c.lw := Graphics.width
+      c.do_ := method
+      Graphics.Add(G.graph, c)
+      GraphicFrames.Defocus(G)
+      GraphicFrames.DrawObj(G, c)
+    end
+  end
+end MakeCircle
+
+procedure MakeEllipse*() // command
+  var x0, y0, a, b: int32
+    c: Curve
+    G: GraphicFrames.Frame
+begin
+  G := GraphicFrames.Focus()
+  if (G # nil) & (G.mark.next # nil) & (G.mark.next.next # nil) then
+    GraphicFrames.Deselect(G)
+    x0 := G.mark.x
+    y0 := G.mark.y
+    a := abs(G.mark.next.x - x0)
+    b := abs(G.mark.next.next.y - y0)
+    if (a > 4) & (b > 4) then
+      newgc(c)
+      c.x := x0 - a - G.x
+      c.y := y0 - b - G.y
+      c.w := 2 * a + 1
+      c.h := 2 * b + 1
+      c.kind := 3
+      c.col := val(byte, Oberon.CurCol)
+      c.lw := Graphics.width
+      c.do_ := method
+      Graphics.Add(G.graph, c)
+      GraphicFrames.Defocus(G)
+      GraphicFrames.DrawObj(G, c)
+    end
+  end
+end MakeEllipse
+
+begin
+  newgc(method)
+  copy(@method.module_, "Curves", Graphics.NameLen)
+  copy(@method.allocator, "New", Graphics.NameLen)
+  method.new_ := New
+  method.copy_ := Copy
+  method.draw := Draw
+  method.selectable := Selectable
+  method.change := Change
+  method.read := Read
+  method.write := Write
+end Curves.

@@ -1,0 +1,738 @@
+module Kernel [level=1] // NW/PR  11.4.86 / 27.12.95 / 4.2.2014 / RK 2026
+
+import SYS, MIC
+
+const
+  SectorLength* = 1024
+  timer = 0FFFFFFC0H
+  spiData = 0FFFFFFD0H
+  spiCtrl = 0FFFFFFD4H
+  CARD0 = 1
+  SPIFAST = 4
+  HdrLen = 16 // heap block header, see New
+  SysBlk = 2 // a block which lives as long as the system
+  GcBlk = 3 // a block which the collector may reclaim, see Collect
+  FreeBlk = -1
+  chunk = 1024 // heap chunk of the block map, see mapBlocks
+  mapLen = 4096 // block map entries; 4096 chunks cover a heap of 4 MB
+  markLen = 1024 // marking stack; it may overflow, see markReachable
+  dataOrgAdr = 0CH // the machine stores the start of the writable data here
+  NofRegs = 14 // ra, sp and s0 to s11, see SYS.spillRegs
+  FSoffset = 0 // original: 80000H, see DESIGN.md
+  mapsize = 65536 // 1K sectors, 64MB
+  LEDadr = 0FFFFFFC4H
+
+type
+  AnyPtr = pointer to byte // helper type for Oberon addresses and SYSTEM.PTR
+  AnyPtrPtr = pointer to AnyPtr // helper type for a variable reinterpreted by SYSTEM.VAL
+  Int32Ptr = pointer to int32 // helper type for a variable reinterpreted by SYSTEM.VAL
+
+  Sector* = array SectorLength of byte
+
+  Name* = array 32 of char
+
+  Cmd* = procedure() // a command procedure
+  Command* = record
+    name*: Name
+    adr*: Cmd
+  end
+  Commands* = pointer to array of Command
+  Entries* = pointer to array of int32
+
+  Module* = pointer to ModuleDesc
+  Imports* = pointer to array of Module
+
+  Exports* = pointer to ExportDescArray
+  ExportDesc* = record
+    fp*: int32
+    adr*: int32
+    nofExp*: int16
+    pad*: int16
+    dsc*: Exports
+  end
+
+  ModuleDesc* = record
+    link*: Module
+    name*: Name
+    init*: byte
+    trapped*: byte
+    pad*: int16
+    refcnt*: int32
+    sb*: int32
+    entries*: Entries
+    cmds*: Commands
+    ptrTab*: Entries
+    tdescs*: Entries
+    imports*: Imports
+    data*: int32
+    code*: int32
+    refs*: int32
+    publics*: int32
+    privates*: int32
+    nofimp*: int32
+    import_*: int32
+    nofstrc*: int32
+    strct*: int32
+    nofreimp*: int32
+    reimp*: int32
+    export*: ExportDesc
+    term*: int32
+  end
+
+  ExportDescArray* = array of ExportDesc
+
+type
+  Allocator* = procedure(size: int32): AnyPtr // the runtime asks for a block, see Init
+
+var
+  allocated*: int32
+  Collections*: int32 // the number of collections so far
+  NofSectors*: int32
+  modules*: Module // module list, see DESIGN.md
+  heapOrg*: AnyPtr
+  heapLim*: int32
+  stackOrg*: AnyPtr
+  stackSize*: int32
+  MemLim*: int32
+  clock: int32
+  ctrl: int32 // SPI status, see SPIIdle
+  list0: AnyPtr // lists of free blocks of size n*256, 128, 64, 32 bytes
+  list1: AnyPtr
+  list2: AnyPtr
+  list3: AnyPtr
+  data: int32 // SPI data in
+  sectorMap: array mapsize div 32 of set
+  dataOrg: AnyPtr // start of the static data of the modules, the root area of the collector
+  blockMap: array mapLen of int32 // offset of a block, see mapBlocks
+  markStack: array markLen of AnyPtr
+  markTop: int32
+  markOverflow: boolean
+
+// ---------- New: heap allocation ----------
+
+procedure blkSize(p: AnyPtr): int32 inline
+  // the fields of the header of the block which begins at p
+begin
+  return cast(Int32Ptr, p)^
+end blkSize
+
+procedure blkKind(p: AnyPtr): int32 inline
+begin
+  return cast(Int32Ptr, ptroff(p, 4))^
+end blkKind
+
+procedure blkMark(p: AnyPtr): int32 inline
+  // the mark of a block; a free block keeps the link to the next one here
+begin
+  return cast(Int32Ptr, ptroff(p, 8))^
+end blkMark
+
+procedure setBlkMark(p: AnyPtr; m: int32) inline
+begin
+  cast(Int32Ptr, ptroff(p, 8))^ := m
+end setBlkMark
+
+procedure GetBlock(p: ^AnyPtr; len_: int32)
+  // len is multiple of 256
+  var q0, q1, q2: AnyPtr
+    size_: int32
+    done: boolean
+begin
+  q0 := nil
+  q1 := list0
+  done := false
+  while ~done & (q1 # nil) do
+    size_ := cast(Int32Ptr, q1)^
+    q2 := cast(AnyPtrPtr, ptroff(q1, 8))^
+    if size_ < len_ then
+      // no fit
+      q0 := q1
+      q1 := q2
+    elsif size_ = len_ then
+      // extract -> p
+      done := true
+      p^ := q1
+      if q0 # nil then
+        cast(AnyPtrPtr, ptroff(q0, 8))^ := q2
+      else
+        list0 := q2
+      end
+    else
+      // reduce size
+      done := true
+      p^ := q1
+      inc(q1, len_)
+      cast(Int32Ptr, q1)^ := size_ - len_
+      cast(Int32Ptr, ptroff(q1, 4))^ := -1
+      cast(AnyPtrPtr, ptroff(q1, 8))^ := q2
+      if q0 # nil then
+        cast(AnyPtrPtr, ptroff(q0, 8))^ := q1
+      else
+        list0 := q1
+      end
+    end
+  end
+  if ~done then
+    p^ := nil
+  end
+end GetBlock
+
+procedure GetBlock128(p: ^AnyPtr)
+  var q: AnyPtr
+begin
+  if list1 # nil then
+    p^ := list1
+    list1 := cast(AnyPtrPtr, ptroff(list1, 8))^
+  else
+    GetBlock(@q, 256)
+    cast(Int32Ptr, ptroff(q, 128))^ := 128
+    cast(Int32Ptr, ptroff(q, 132))^ := -1
+    cast(AnyPtrPtr, ptroff(q, 136))^ := list1
+    list1 := q
+    inc(list1, 128)
+    p^ := q
+  end
+end GetBlock128
+
+procedure GetBlock64(p: ^AnyPtr)
+  var q: AnyPtr
+begin
+  if list2 # nil then
+    p^ := list2
+    list2 := cast(AnyPtrPtr, ptroff(list2, 8))^
+  else
+    GetBlock128(@q)
+    cast(Int32Ptr, ptroff(q, 64))^ := 64
+    cast(Int32Ptr, ptroff(q, 68))^ := -1
+    cast(AnyPtrPtr, ptroff(q, 72))^ := list2
+    list2 := q
+    inc(list2, 64)
+    p^ := q
+  end
+end GetBlock64
+
+procedure GetBlock32(p: ^AnyPtr)
+  var q: AnyPtr
+begin
+  if list3 # nil then
+    p^ := list3
+    list3 := cast(AnyPtrPtr, ptroff(list3, 8))^
+  else
+    GetBlock64(@q)
+    cast(Int32Ptr, ptroff(q, 32))^ := 32
+    cast(Int32Ptr, ptroff(q, 36))^ := -1
+    cast(AnyPtrPtr, ptroff(q, 40))^ := list3
+    list3 := q
+    inc(list3, 32)
+    p^ := q
+  end
+end GetBlock32
+
+procedure New(ptr: ^AnyPtr; tag: AnyPtr; kind, len_: int32)
+  // the block carries a 16 bytes header; free blocks keep Wirth's layout
+  var p: AnyPtr
+    size_: int32
+    lim: AnyPtr
+begin
+  size_ := (len_ + HdrLen + 7) div 8 * 8
+  if size_ <= 32 then
+    size_ := 32
+    GetBlock32(@p)
+  elsif size_ <= 64 then
+    size_ := 64
+    GetBlock64(@p)
+  elsif size_ <= 128 then
+    size_ := 128
+    GetBlock128(@p)
+  else
+    size_ := (size_ + 255) div 256 * 256
+    GetBlock(@p, size_)
+  end
+  if p = nil then
+    ptr^ := nil
+  else
+    ptr^ := p
+    inc(ptr^, HdrLen)
+    cast(Int32Ptr, p)^ := size_
+    cast(Int32Ptr, ptroff(p, 4))^ := kind
+    cast(Int32Ptr, ptroff(p, 8))^ := 0
+    cast(AnyPtrPtr, ptroff(p, 12))^ := tag
+    lim := p
+    inc(lim, size_)
+    inc(p, HdrLen)
+    inc(allocated, size_)
+    while ord(p) < ord(lim) do
+      cast(Int32Ptr, p)^ := 0
+      inc(p, 4)
+    end
+  end
+end New
+
+// NewRec, NewSys and NewArr are dropped: here the runtime calls newSys and newGc instead,
+// and the block headers are the same for all kinds of block, see DESIGN.md
+
+// ---------- Garbage collector ----------
+
+procedure HeapSize*(): int32 inline
+  // size of the heap in bytes
+begin
+  return heapLim - val(int32, ord(heapOrg))
+end HeapSize
+
+procedure Available*(): int32 inline
+  // free heap space in bytes
+begin
+  return HeapSize() - allocated
+end Available
+
+// Mark and Scan work conservatively here, see DESIGN.md
+
+procedure mapBlocks()
+  // for each chunk of the heap the block which covers its first byte
+  var p: AnyPtr
+    off, lim, size_, c: int32
+begin
+  p := heapOrg
+  off := 0
+  lim := HeapSize()
+  c := 0
+  while off < lim do
+    size_ := blkSize(p)
+    while (c < mapLen) & (c * chunk < off + size_) do
+      blockMap[c] := off
+      inc(c)
+    end
+    inc(off, size_)
+    inc(p, size_)
+  end
+end mapBlocks
+
+procedure blockOf(a: AnyPtr): AnyPtr
+  // the block which contains the address a, or NIL if there is none
+  var off, size_: int32
+    p, res: AnyPtr
+begin
+  res := nil
+  off := val(int32, ord(a)) - val(int32, ord(heapOrg))
+  if (off >= HdrLen) & (val(int32, ord(a)) < heapLim) then
+    p := ptroff(heapOrg, blockMap[off div chunk])
+    size_ := blkSize(p)
+    while (size_ > 0) & (size_ mod 8 = 0) & (val(int32, ord(p)) + size_ <= val(int32, ord(a))) do
+      inc(p, size_)
+      size_ := blkSize(p) // a block whose size is no positive multiple of 8 ends the walk
+    end
+    if (size_ > 0) & (size_ mod 8 = 0) & (val(int32, ord(a)) >= val(int32, ord(p)) + HdrLen) then
+      res := p // an address in the header does not count as a reference
+    end
+  end
+  return res
+end blockOf
+
+procedure push(p: AnyPtr)
+begin
+  if markTop < markLen then
+    markStack[markTop] := p
+    inc(markTop)
+  else
+    markOverflow := true // the block waits with mark 1, see markReachable
+  end
+end push
+
+procedure markCandidate(a: AnyPtr)
+  // a word which addresses a block keeps it alive
+  var p: AnyPtr
+begin
+  p := blockOf(a)
+  if (p # nil) & (blkKind(p) # FreeBlk) & (blkMark(p) = 0) then
+    setBlkMark(p, 1)
+    push(p)
+  end
+end markCandidate
+
+procedure markArea(from_, lim: AnyPtr)
+  // every word of the area is a candidate
+  var p: AnyPtr
+begin
+  p := from_
+  while ord(p) < ord(lim) do
+    markCandidate(cast(AnyPtrPtr, p)^)
+    inc(p, 4)
+  end
+end markArea
+
+procedure markReachable()
+  // the transitive closure; a block waits with mark 1 and is done with mark 2
+  var p: AnyPtr
+begin
+  repeat
+    while markTop > 0 do
+      dec(markTop)
+      p := markStack[markTop]
+      setBlkMark(p, 2)
+      markArea(ptroff(p, HdrLen), ptroff(p, blkSize(p)))
+    end
+    if markOverflow then
+      // the marking stack was too small: find the blocks which still wait
+      markOverflow := false
+      p := heapOrg
+      while val(int32, ord(p)) < heapLim do
+        if (blkKind(p) # FreeBlk) & (blkMark(p) = 1) then
+          push(p)
+        end
+        inc(p, blkSize(p))
+      end
+    end
+  until (markTop = 0) & ~markOverflow
+end markReachable
+
+procedure freeArea(from_, lim: AnyPtr)
+  // the space between two live blocks becomes blocks of 32, 64, 128 and n*256 bytes
+  // in the free lists, as in Wirth's original
+  var q: AnyPtr
+    size_: int32
+begin
+  q := from_
+  size_ := val(int32, ord(lim)) - val(int32, ord(q))
+  if size_ mod 64 # 0 then
+    cast(Int32Ptr, q)^ := 32
+    cast(Int32Ptr, ptroff(q, 4))^ := FreeBlk
+    cast(AnyPtrPtr, ptroff(q, 8))^ := list3
+    list3 := q
+    inc(q, 32)
+    dec(size_, 32)
+  end
+  if size_ mod 128 # 0 then
+    cast(Int32Ptr, q)^ := 64
+    cast(Int32Ptr, ptroff(q, 4))^ := FreeBlk
+    cast(AnyPtrPtr, ptroff(q, 8))^ := list2
+    list2 := q
+    inc(q, 64)
+    dec(size_, 64)
+  end
+  if size_ mod 256 # 0 then
+    cast(Int32Ptr, q)^ := 128
+    cast(Int32Ptr, ptroff(q, 4))^ := FreeBlk
+    cast(AnyPtrPtr, ptroff(q, 8))^ := list1
+    list1 := q
+    inc(q, 128)
+    dec(size_, 128)
+  end
+  if size_ > 0 then
+    cast(Int32Ptr, q)^ := size_
+    cast(Int32Ptr, ptroff(q, 4))^ := FreeBlk
+    cast(AnyPtrPtr, ptroff(q, 8))^ := list0
+    list0 := q
+  end
+end freeArea
+  
+procedure Collect*()
+  // a conservative mark and sweep over the whole heap
+  var p, run, lim: AnyPtr
+    size_: int32
+    free: boolean
+    regs: array NofRegs of uint32 // the registers of the callers, see SYS.spillRegs
+begin
+  inc(Collections)
+  SYS.spillRegs(@regs) // a pointer may be in a register; must be the first statement
+  mapBlocks()
+  markTop := 0
+  markOverflow := false
+  markArea(cast(AnyPtr, @regs[0]), cast(AnyPtr, ptroff(@regs[0], NofRegs)))
+  markArea(dataOrg, ptroff(stackOrg, -stackSize)) // the global variables of the modules
+  markArea(ptroff(stackOrg, -stackSize), stackOrg) // the whole stack, see DESIGN.md
+  markReachable()
+
+  // sweep: the unmarked blocks and the space which was free already become free lists
+  list0 := nil
+  list1 := nil
+  list2 := nil
+  list3 := nil
+  allocated := 0
+  lim := ptroff(heapOrg, HeapSize())
+  p := heapOrg
+  run := nil
+  while ord(p) < ord(lim) do
+    size_ := blkSize(p)
+    free := (blkKind(p) = FreeBlk) or ((blkKind(p) = GcBlk) & (blkMark(p) = 0))
+    if free then
+      if run = nil then
+        run := p
+      end
+    else
+      if run # nil then
+        freeArea(run, p)
+        run := nil
+      end
+      setBlkMark(p, 0)
+      inc(allocated, size_)
+    end
+    inc(p, size_)
+  end
+  if run # nil then
+    freeArea(run, lim)
+  end
+end Collect
+
+procedure newSys(size_: int32): AnyPtr
+  // installed in the runtime by Init: a block which lives as long as the system
+  var p: AnyPtr
+begin
+  New(@p, nil, SysBlk, size_)
+  return p
+end newSys
+
+procedure newGc(size_: int32): AnyPtr
+  // installed in the runtime by Init: a block the collector may reclaim
+  var p: AnyPtr
+begin
+  New(@p, nil, GcBlk, size_)
+  if p = nil then
+    Collect()
+    New(@p, nil, GcBlk, size_)
+  end
+  return p
+end newGc
+
+// ---------- Disk storage management ----------
+
+procedure SPIIdle(n: int32)
+begin
+  // send n FFs slowly with no card selected
+  Int32Ptr{spiCtrl}^ := 0
+  while n > 0 do
+    dec(n)
+    Int32Ptr{spiData}^ := -1
+    repeat
+      ctrl := Int32Ptr{spiCtrl}^
+    until ((ctrl mod 2) # 0)
+    data := Int32Ptr{spiData}^
+  end
+end SPIIdle
+
+procedure SPI(n: int32)
+begin
+  // send&rcv byte slowly with card selected
+  Int32Ptr{spiCtrl}^ := CARD0
+  Int32Ptr{spiData}^ := n
+  repeat
+    ctrl := Int32Ptr{spiCtrl}^
+  until ((ctrl mod 2) # 0)
+  data := Int32Ptr{spiData}^
+end SPI
+
+procedure SPICmd(n, arg: int32)
+  var i, crc: int32
+begin
+  // send cmd
+  repeat
+    SPIIdle(1) // flush while unselected
+  until data = 255
+  repeat
+    SPI(255) // flush while selected
+  until data = 255
+  if n = 8 then
+    crc := 135
+  elsif n = 0 then
+    crc := 149
+  else
+    crc := 255
+  end
+  SPI(n mod 64 + 64) // send command
+  for i := 24 to 0 by -8 do
+    SPI(SYS.ROT(arg, -i)) // send arg
+  end
+  SPI(crc)
+  i := 32
+  repeat
+    SPI(255)
+    dec(i)
+  until (data < 128) or (i = 0)
+end SPICmd
+
+procedure SDShift(n: ^int32)
+  var data: int32
+begin
+  SPICmd(58, 0) // CMD58 get card capacity bit
+  data := Int32Ptr{spiData}^
+  SPI(-1)
+  ctrl := Int32Ptr{spiData}^
+  if (data # 0) or ~((ctrl div 64 mod 2) # 0) then
+    n^ := n^ * 512 // non-SDHC card
+  end
+  SPI(-1) // flush response
+  SPI(-1)
+  SPIIdle(1)
+end SDShift
+
+
+procedure ReadSD(src: int32; dst: AnyPtr)
+  var i: int32
+begin
+  SDShift(@src) // CMD17 read one block
+  SPICmd(17, src)
+  assert(data = 0)
+  i := 0 // wait for start data marker
+  repeat
+    SPI(-1)
+    inc(i)
+  until data = 254
+  Int32Ptr{spiCtrl}^ := sigc(SPIFAST + CARD0)
+  for i := 0 to 508 by 4 do
+    Int32Ptr{spiData}^ := -1
+    repeat
+      ctrl := Int32Ptr{spiCtrl}^
+    until ((ctrl mod 2) # 0)
+    data := Int32Ptr{spiData}^
+    cast(Int32Ptr, dst)^ := data
+    inc(dst, 4)
+  end
+  SPI(255) // may be a checksum; deselect card
+  SPI(255)
+  SPIIdle(1)
+end ReadSD
+
+procedure WriteSD(dst: int32; src: AnyPtr)
+  var i, n: int32
+    x: byte
+begin
+  SDShift(@dst) // CMD24 write one block
+  SPICmd(24, dst)
+  assert(data = 0)
+  SPI(254) // write start data marker
+  Int32Ptr{spiCtrl}^ := sigc(SPIFAST + CARD0)
+  for i := 0 to 508 by 4 do
+    n := cast(Int32Ptr, src)^
+    inc(src, 4)
+    Int32Ptr{spiData}^ := n
+    repeat
+      ctrl := Int32Ptr{spiCtrl}^
+    until ((ctrl mod 2) # 0)
+  end
+  SPI(255) // dummy checksum
+  SPI(255)
+  i := 0
+  repeat
+    SPI(-1)
+    inc(i)
+  until (data mod 32 = 5) or (i = 10000)
+  assert(data mod 32 = 5) // deselect card
+  SPIIdle(1)
+end WriteSD
+
+procedure InitSecMap*()
+  var i: int32
+begin
+  NofSectors := 0
+  sectorMap[0] := {0..31}
+  sectorMap[1] := {0..31}
+  for i := 2 to mapsize div 32 - 1 do
+    sectorMap[i] := {}
+  end
+end InitSecMap
+
+procedure MarkSector*(sec: int32)
+begin
+  assert(sec mod 29 = 0)
+  sec := sec div 29
+  sectorMap[sec div 32] := sectorMap[sec div 32] + {sec mod 32}
+  inc(NofSectors)
+end MarkSector
+
+procedure FreeSector*(sec: int32)
+begin
+  assert(sec mod 29 = 0)
+  sec := sec div 29
+  sectorMap[sec div 32] := sectorMap[sec div 32] - {sec mod 32}
+  dec(NofSectors)
+end FreeSector
+
+procedure AllocSector*(hint: int32; sec: ^int32)
+  var s: int32
+begin
+  // find free sector, starting after hint
+  assert(hint mod 29 = 0)
+  hint := hint div 29
+  s := hint
+  repeat
+    inc(s)
+    if s = mapsize then
+      s := 1
+    end
+  until ~(s mod 32 in sectorMap[s div 32])
+  sectorMap[s div 32] := sectorMap[s div 32] + {s mod 32}
+  inc(NofSectors)
+  sec^ := s * 29
+end AllocSector
+
+procedure GetSector*(src: int32; dst: pointer to array of byte)
+begin
+  assert(src mod 29 = 0)
+  src := src div 29
+  src := src * 2 + FSoffset
+  ReadSD(src, cast(AnyPtr, dst))
+  ReadSD(src + 1, @dst[512])
+end GetSector
+
+procedure PutSector*(dst: int32; src: pointer to array of byte)
+begin
+  assert(dst mod 29 = 0)
+  dst := dst div 29
+  dst := dst * 2 + FSoffset
+  WriteSD(dst, cast(AnyPtr, src))
+  WriteSD(dst + 1, @src[512])
+end PutSector
+
+// -------- Miscellaneous procedures----------
+
+procedure Time*(): int32
+  var t: int32
+begin
+  t := Int32Ptr{timer}^
+  return t
+end Time
+
+procedure Clock*(): int32
+begin
+  return clock
+end Clock
+
+procedure SetClock*(dt: int32)
+begin
+  clock := dt
+end SetClock
+
+procedure LED*(n: int32)
+begin
+  Int32Ptr{LEDadr}^ := n
+end LED
+
+// Install and Trap are dropped, see DESIGN.md
+
+procedure Init*()
+begin
+  // see DESIGN.md
+  MemLim := Int32Ptr{010H}^
+  dataOrg := AnyPtrPtr{dataOrgAdr}^
+  heapOrg := AnyPtrPtr{08H}^
+  stackSize := 32768
+  inc(heapOrg, stackSize)
+  stackOrg := heapOrg
+  heapLim := MemLim
+  if HeapSize() > sigl(mapLen * chunk) then 
+    heapLim := val(int32, ord(heapOrg)) + sigl(mapLen * chunk) // as far as the block map reaches
+  end
+  list1 := nil
+  list2 := nil
+  list3 := nil
+  list0 := heapOrg
+  cast(Int32Ptr, list0)^ := heapLim - val(int32, ord(heapOrg))
+  cast(Int32Ptr, ptroff(list0, 4))^ := -1
+  cast(Int32Ptr, ptroff(list0, 8))^ := 0
+  allocated := 0
+  Collections := 0
+  clock := 0
+  MIC.Install(newSys, newGc) // the runtime allocates through the Kernel from now on
+  InitSecMap()
+end Init
+
+end Kernel.

@@ -1,0 +1,251 @@
+module Modules [level=5] // Link and load on RISC; NW 20.10.2013 / 9.4.2016 / RK 2026
+
+import SYS, Kernel, Files
+
+const
+  versionkey = 1X
+  MT = 12
+  DescSize = 80
+  MaxCmds = 128 // see Register
+
+type
+  AnyPtr = pointer to byte // helper type for Oberon addresses and SYSTEM.PTR
+
+  Module* = pointer to ModDesc
+  Command* = Kernel.Cmd // a procedure, not an address
+  ModuleName* = array 32 of char
+
+  ModDesc* = record
+    name*: ModuleName
+    next*: Module
+    key*: int32
+    num*: int32
+    size_*: int32
+    refcnt*: int32
+    data*: int32 // addresses
+    code*: int32
+    imp*: AnyPtr
+    cmd*: AnyPtr
+    ent*: int32
+    ptr*: AnyPtr
+    unused: int32
+    cmds*: Kernel.Commands // commands of the statically linked module
+    ptrs*: Kernel.Entries // global pointers of the statically linked module
+  end
+
+  CmdEntry* = record
+    // see Register
+    mod_*: Module
+    name*: ModuleName
+    adr*: Command
+  end
+
+var
+  root*: Module
+  M: Module
+  MTOrg*: int32
+  AllocPtr*: int32
+  res*: int32
+  importing*: ModuleName
+  imported*: ModuleName
+  limit: AnyPtr
+  cmdTab*: array MaxCmds of CmdEntry // see Register
+  nofCmds*: int32
+
+procedure ThisFile(const name: pointer to array of char): Files.File
+  var i: int32
+    filename: ModuleName
+begin
+  i := 0
+  while name[i] # 0X do
+    filename[i] := name[i]
+    inc(i)
+  end
+  filename[i] := "."
+  filename[i + 1] := "r"
+  filename[i + 2] := "s"
+  filename[i + 3] := "c"
+  filename[i + 4] := 0X
+  return Files.Old(@filename)
+end ThisFile
+
+procedure error(n: int32; const name: pointer to array of char)
+begin
+  res := n
+  copy(@importing, name, 32)
+end error
+
+procedure Check(const s: pointer to array of char)
+  var i: int32
+    ch: char
+begin
+  ch := s[0]
+  res := 1
+  i := 1
+  if (ch >= "A") & (ch <= "Z") or (ch >= "a") & (ch <= "z") then
+    repeat
+      ch := s[i]
+      inc(i)
+    until ~((ch >= "0") & (ch <= "9") or (ch >= "A") & (ch <= "Z") or (ch >= "a") & (ch <= "z") or (ch = ".")) or (i = 32)
+    if (i < 32) & (ch = 0X) then
+      res := 0
+    end
+  end
+end Check
+
+procedure Load*(const name: pointer to array of char; newmod: ^Module)
+  // all modules are linked statically and their bodies have run, see Design.md
+  var mod_: Module
+begin
+  mod_ := root
+  res := 0
+  while (mod_ # nil) & (name^ # mod_.name) do
+    mod_ := mod_.next
+  end
+  if mod_ = nil then
+    error(2, name)
+  end
+  newmod^ := mod_
+end Load
+
+procedure ThisModule*(const name: pointer to array of char): Module
+  // the module descriptor of a linked module, generated on demand
+  var mod_, last: Module
+begin
+  mod_ := root
+  last := nil
+  while (mod_ # nil) & (mod_.name # name^) do
+    last := mod_
+    mod_ := mod_.next
+  end
+  if mod_ = nil then
+    newgc(mod_) // the descriptor is cleared, so only the name has to be set
+    copy(@mod_.name, name, 32)
+    if last = nil then
+      root := mod_
+    else
+      last.next := mod_
+    end
+  end
+  return mod_
+end ThisModule
+
+
+procedure Register*(const modname, cmdname: pointer to array of char; adr: Command)
+begin
+  // the commands are registered at startup, see Design.md
+  if nofCmds < MaxCmds then
+    cmdTab[nofCmds].mod_ := ThisModule(modname)
+    copy(@cmdTab[nofCmds].name, cmdname, 32)
+    cmdTab[nofCmds].adr := adr
+    inc(nofCmds)
+  end
+end Register
+
+procedure ThisCommand*(mod_: Module; const name: pointer to array of char): Command
+  // the address of a command is a procedure here
+  var i: int32
+    w: Command
+begin
+  res := 5
+  w := nil
+  i := 0
+  while (res # 0) & (i < nofCmds) do
+    if (cmdTab[i].mod_ = mod_) & (cmdTab[i].name = name^) then
+      res := 0
+      w := cmdTab[i].adr
+    end
+    inc(i)
+  end
+  if (res # 0) & (mod_ # nil) & (mod_.cmds # nil) then
+    i := 0
+    // Oberon: WHILE (res # 0) & (i < LEN(mod.cmds^)) DO; micc has no LEN for a
+    // dynamic array, so the command list ends with an empty name
+    while (res # 0) & (mod_.cmds[i].name[0] # 0X) do
+      if mod_.cmds[i].name = name^ then
+        res := 0
+        w := mod_.cmds[i].adr
+      end
+      inc(i)
+    end
+  end
+  return w
+end ThisCommand
+
+procedure Free*(const name: pointer to array of char)
+  type AnyPtrPtr = pointer to AnyPtr 
+  var mod_, imp: Module
+    p, q: AnyPtr
+begin
+  mod_ := root
+  res := 0
+  while (mod_ # nil) & (mod_.name # name^) do
+    mod_ := mod_.next
+  end
+  if mod_ # nil then
+    if mod_.refcnt = 0 then
+      mod_.name[0] := 0X
+      p := mod_.imp
+      q := mod_.cmd
+      while ord(p) < ord(q) do
+        imp := cast(Module, cast(AnyPtrPtr, p)^)
+        dec(imp.refcnt)
+        inc(p, 4)
+      end
+    else
+      res := 1
+    end
+  end
+end Free
+
+procedure Init*()
+  // see Design.md
+  var k: Kernel.Module
+    mod_, last: Module
+    i, n: int32
+begin
+  Files.Init()
+  MTOrg := 0
+  AllocPtr := 0
+  limit := Kernel.heapOrg
+  root := nil
+  last := nil
+  k := Kernel.modules
+  while k # nil do
+    newgc(mod_) // the descriptor is cleared, so only the linked fields are set
+    copy(@mod_.name, @k.name, 32)
+    mod_.refcnt := k.refcnt
+    mod_.data := k.data
+    mod_.code := k.code
+    mod_.cmds := k.cmds
+    // Oberon: IF k.ptrTab # NIL THEN n := LEN(k.ptrTab^) ELSE n := 0 END; micc has
+    // no LEN for a dynamic array, so the table of global pointers ends with a zero
+    n := 0
+    if k.ptrTab # nil then
+      while k.ptrTab[n] # 0 do
+        inc(n)
+      end
+    end
+    if n > 0 then
+      newgc(mod_.ptrs, n + 1)
+      i := 0
+      while i < n do
+        mod_.ptrs[i] := k.ptrTab[i]
+        inc(i)
+      end
+      mod_.ptrs[n] := 0
+      mod_.ptr := cast(AnyPtr, @mod_.ptrs[0])
+    end
+    if last = nil then
+      root := mod_
+    else
+      last.next := mod_
+    end
+    last := mod_
+    k := k.link
+  end
+end Init
+
+begin
+  Init() // the bodies of the other modules are called by the boot linker
+end Modules.

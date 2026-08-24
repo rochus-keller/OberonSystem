@@ -1,0 +1,180 @@
+module Fonts [level=5] // JG 18.11.90; PDR 8.6.12; NW 25.3.2013 / RK 2026
+
+import Files, Display
+  // Display is imported for the Pattern type, see DESIGN.md
+
+const
+  FontFileId = 0DBH
+
+type
+  Glyph = record // the metrics of a character in the raster, followed by its raster lines
+    dx, x, y, w, h: byte
+  end
+  GlyphPtr = pointer to Glyph
+  Font* = pointer to FontDesc
+  FontDesc* = object
+    name*: array 32 of char
+    height*, minX*, maxX*, minY*, maxY*: int32
+    next*: Font
+    T: array 128 of GlyphPtr // the glyph of each character code
+    raster: array 2360 of byte
+  end
+
+  LargeFontDesc = object (FontDesc)
+    ext: array 2560 of byte // enlarges the raster of the base type
+  end
+  LargeFont = pointer to LargeFontDesc
+
+  // raster sizes: Syntax8 1367, Syntax10 1628, Syntax12 1688, Syntax14 1843, Syntax14b 1983,
+  // Syntax16 2271, Syntax20 3034, Syntac24 4274, Syntax24b 4302
+
+var
+  Default*, root*: Font
+
+procedure GetPat*(fnt: Font; ch: char; dx, x, y, w, h: ^int32; patadr: ^Display.Pattern)
+  var g: GlyphPtr
+begin
+  g := fnt.T[ord(ch) mod 128]
+  patadr^ := @g.w // Display expects the width and the height, followed by the raster lines
+  dx^ := +g.dx
+  x^ := +g.x
+  y^ := sigc(g.y) // the y offset is signed: a glyph may reach below the base line, must be sigc!
+  w^ := +g.w
+  h^ := +g.h
+end GetPat
+
+procedure This*(const name: ^array of char): Font
+  type
+    Run = record beg, lim: byte end // a range of character codes present in the font
+  var
+    F: Font
+    LF: LargeFont
+    f: Files.File
+    R: Files.Rider
+    NofRuns, NofBoxes, NofBytes: int32
+    height, minX, maxX, minY, maxY: byte
+    i, j, k, m, n: int32
+    a: Display.Pattern // the next free byte of the raster
+    g: GlyphPtr
+    null: GlyphPtr // the glyph of the characters not in a run
+    b: byte
+    run: array 16 of Run
+    box: array 512 of Glyph
+
+  procedure RdInt16(R: ^Files.Rider): byte
+    // the font file stores its numbers as 16 bit little endian, of which only the low byte is used
+    var b0, b1: byte
+  begin
+    Files.ReadByte(R, @b0)
+    Files.ReadByte(R, @b1)
+    return b0
+  end RdInt16
+begin
+  F := root
+  while (F # nil) & (name^ # F.name) do
+    F := F.next
+  end
+  if F = nil then
+    f := Files.Old(name)
+    if f # nil then
+      Files.Set(@R, f, 0)
+      Files.ReadByte(@R, @b)
+      if b = FontFileId then
+        Files.ReadByte(@R, @b) // abstraction
+        Files.ReadByte(@R, @b) // family
+        Files.ReadByte(@R, @b) // variant
+        // the font is allocated when its size is known
+        height := RdInt16(@R)
+        minX := RdInt16(@R)
+        maxX := RdInt16(@R)
+        minY := RdInt16(@R)
+        maxY := RdInt16(@R)
+        NofRuns := sigc(RdInt16(@R))
+        NofBoxes := 0
+        for k := 0 to NofRuns - 1 do
+          run[k].beg := RdInt16(@R)
+          run[k].lim := RdInt16(@R)
+          inc(NofBoxes, sigl(run[k].lim) - sigl(run[k].beg)) 
+        end
+        NofBytes := 5 // the null glyph
+        for j := 0 to NofBoxes - 1 do
+          box[j].dx := RdInt16(@R)
+          box[j].x := RdInt16(@R)
+          box[j].y := RdInt16(@R)
+          box[j].w := RdInt16(@R)
+          box[j].h := RdInt16(@R)
+          inc(NofBytes, 5 + (sigl(box[j].w) + 7) div 8 * sigl(box[j].h)) 
+        end
+        if NofBytes < 2300 then
+          newgc(F)
+        else
+          newgc(LF)
+          F := LF
+        end
+        copy(@F.name, name, 32)
+        F.height := sigc(height)
+        F.minX := sigc(minX)
+        F.maxX := sigc(maxX)
+        F.maxY := sigc(maxY)
+        F.minY := sigc(minY) // signed, in contrast to the other metrics
+        null := cast(GlyphPtr, @F.raster[0])
+        null.dx := 0
+        null.x := 0
+        null.y := 0
+        null.w := 0
+        null.h := 0
+        a := @F.raster[5]
+        j := 0
+        k := 0
+        m := 0
+        while k < NofRuns do
+          while (m < sigl(run[k].beg)) & (m < 128) do 
+            F.T[m] := null
+            inc(m)
+          end
+          while (m < sigl(run[k].lim)) & (m < 128) do 
+            g := cast(GlyphPtr, a)
+            g^ := box[j] // the metrics, in one assignment
+            inc(a, 5)
+            F.T[m] := g
+            n := (sigl(box[j].w) + 7) div 8 * sigl(box[j].h) 
+            for i := 1 to n do
+              Files.ReadByte(@R, a) // read the raster line directly into the raster
+              inc(a)
+            end
+            inc(j)
+            inc(m)
+          end
+          inc(k)
+        end
+        while m < 128 do
+          F.T[m] := null
+          inc(m)
+        end
+        F.next := root
+        root := F
+      else // bad file id
+        F := Default
+      end
+    else // font file not available
+      F := Default
+    end
+  end
+  return F
+end This
+
+procedure Free*()
+  // remove all but first two from font list
+  var f: Font
+begin
+  f := root.next
+  if f # nil then
+    f := f.next
+  end
+  f.next := nil
+end Free
+
+begin
+  root := nil
+  Default := This("Oberon10.Scn.Fnt")
+end Fonts.

@@ -1,142 +1,85 @@
-This is a version of the [Project Oberon System](https://projectoberon.net/) migrated
-from Oberon 07 to the more common Oberon 90, using a recent version of the
-[OP2 compiler](https://github.com/rochus-keller/op2/) with a RISC-V (RV32) backend; 
-the repository also includes an emulation of a machine (VM) very similar to the one described by Wirth in his
-[Project Oberon Book](http://www.inf.ethz.ch/personal/wirth/ProjectOberon/PO.Computer.pdf), 
-based on the well-known [RV32 emulator](https://github.com/sysprog21/rv32emu);
-the latter is a stripped-down and slightly modified version with only the interpreter,
-combined with my own implementation of the machine and the peripherals; 
-the memory map of Wirth's machine is reproduced 1:1 so that Kernel.Mod, Display.Mod and 
-Input.Mod are unchanged.
+This is a version of the [Project Oberon System](https://projectoberon.net/) written entirely in the
+[Micron programming language](https://github.com/micron-language/specification) and compiled with the
+[micc compiler](https://github.com/rochus-keller/micron/) with its RISC-V (RV32) backend.
 
-Here is a screenshot of the system running natively on the RISC-V VM:
+The branch started from the [op2-rv32 branch](https://github.com/rochus-keller/OberonSystem/tree/op2-rv32) of this
+repository, which migrated the system from Oberon-07 to Oberon 90 for the OP2 compiler; see its
+[Readme](https://github.com/rochus-keller/OberonSystem/blob/op2-rv32/Readme.md) for the history of Project Oberon,
+the reasons for choosing RISC-V, and the description of the emulated machine.
+Everything said there about the machine still applies here: the VM, the disk image tools and the font/file
+resources are unchanged; only the Oberon modules have been replaced by their Micron counterparts.
+
+Here is a screenshot of the Project Oberon system running natively on the RISC-V VM 
+(looks identical in the Oberon 90 and Micron versions):
 
 ![Project Oberon System Screenshot](http://software.rochus-keller.ch/project_oberon_system_rv32.png)
 
-### What is the Project Oberon System 2013
+### What changed compared to op2-rv32
 
-As you might know, between 1986 and 1989, Niklaus Wirth and Jürg Gutknecht at ETH Zürich designed
-and implemented an entire computer system, including an operating system, compiler,
-programming language, text and graphics editors, essentially by themselves, 
-and then documented everything in the book _Project Oberon - The Design of an Operating System and Compiler_ (1992).
+- All Oberon modules (\*.Mod) were replaced by Micron modules (*.mic). The module structure and the
+  design follow the book as closely as the language allows, so the Project Oberon book remains the documentation of this system.
+- The initial migration was done with [the o2m transpiler from the ActiveOberon Project](https://github.com/rochus-keller/activeoberon/)
+  and then each module was manually edited considering all TODOs left by the transpiler, until the result
+  correspondet to the intended Micron architecture and style.
+- The system is compiled with [micc](https://github.com/rochus-keller/micron/) instead of OP2. 
+  The *.obpro project files became *.micpro files, and build.sh in the root builds the whole system using micc.
+- The vm subdirectory, the file tools and the resource files (fonts, graphics libraries, disk layout) are untouched; 
+  the hardware/software contract, i.e. the memory map plus the RV32 instruction set, is the same as in op2-rv32.
 
-Wirth continued this journey after his retirement. The sources published on [projectoberon.net](https://projectoberon.net)
-are written in _Oberon-07_, which is Wirth's last and most radical simplification of the language. 
-There is also a free 2013 revision of the Project Oberon book available.
-The declared purpose of the 2013 project is unchanged from 1992: 
-_to provide a single book that serves as an example of a system that exists, is in actual use, and is explained in all detail_. 
+### Migration notes
 
-The 1992 book and project used the _National Semiconductor NS32032_ processor, which "is now neither available nor is its architecture recommendable". 
-Instead of retargeting the compiler to some other commercial architecture, Wirth decided to design his own processor, 
-which he called _RISC-5_, 
-"in order to extend the desire for simplicity and regularity to the hardware". 
-He even implemented it with a programmable gate array (FPGA) and turned his design into 
-"a real, functioning processor on a single chip". The whole system runs on a low-cost development board (Xilinx Spartan-3 by
-Digilent, with 1 MB of static RAM) that "easily accommodates the entire Oberon System, including its compiler".
-So for the first time not only the software but also the hardware of the Oberon System is described completely
-and rigorously. The hardware modules are implemented in _Verilog_ , also available on projectoberon.net.
+Micron is a systems programming language in the Oberon tradition, but it deviates from Oberon in ways
+that show in the source:
 
-Thanks to the simplifications of language and processor, all parts that in 1992 had been written in assembly code (and
-were not in the book) are now expressed in Oberon as well, from device drivers to raster operations. Wirth based his 
-new system directly on the original Ceres version, discarding the features of the later Oberon lines.
-"It has been my desire to present the system essentially as it existed 25 years ago, without embellishments".
-The result is a small and sufficiently complete system which is well documented and easy to migrate to other architectures.
-The entire hardware/software contract of Project Oberon consists of a memory map plus the instruction set.
+- Micron can take the address of variables, fields and elements; so VAR parameters are no longer necessary; 
+  procedures that modify an argument take a pointer, and the caller passes the address explicitly with `@`.
+- Signed and unsigned integers are separate type families with explicit widths (int32, uint8, ...);
+  all conversions between them are written out.
+- Garbage collection is implemented by the Kernel, not the compiler. The compiled code calls the `MIC$` runtime for
+  `new`, `newgc`, `println` etc.; on this machine there is no C library underneath, so the runtime is
+  implemented in Micron itself: the MIL module MIC+.mil declares the `MIC$` symbols and forwards them
+  to the module MIC, and the Kernel installs its allocators in MIC at startup. 
+  Every allocation in the system therefore runs through the Kernel, without compiler fixups or boot linker magic.
+- micc generates neither module pointer tables nor type descriptors for a precise collector, 
+  so the Kernel replaces Wirth's precise garbage collector with a conservative one (in the style of the Boehm collector):
+  the roots are the module data, the whole stack and the spilled registers, and anything
+  that looks like a pointer into the heap keeps its block alive. Wirth's free list structure and the sweep are kept unchanged.
+- Wirth's fixed memory map is generalized: the VM takes a `--ram <MB>` option, places the frame buffer
+  at the top of RAM, and passes the layout (heap origin, data origin, memory limit) to the software in
+  a small boot header at the bottom of memory, from which Kernel.Init reads its world. With `--ram 1`
+  the layout coincides with Wirth's original.
 
-### Why the migration
-
-The name collision with _RISC-V_ is amusing, but the kinship is real at the level of RISC design philosophy: 
-RISC-V, developed at UC Berkeley from 2010 on, is the fifth RISC architecture of the Berkeley line (RISC-I, RISC-II, SOAR, SPUR), 
-and both Berkeley's and Wirth's share common design goals and features:
-e.g. a regular 32-bit load/store, compiler-friendly ISA, with fixed 32-bit base instruction encodings. 
-
-Migrating the Project Oberon System from RISC-5 to RISC-V is a pragmatic way to bring the system to widely available contemporary hardware 
-while preserving the principles that make Oberon valuable. Espressif offers inexpensive, readily available microcontrollers in several ESP32 families, 
-and board makers such as Olimex build practical development boards around them, for example the ESP32-P4-PC which provides all resources needed 
-by the Oberon System at a very attractive price.
-Since the Oberon system does not require an MMU, it is well-suited for this type of microcontroller. 
-So far, this migration runs on an emulated RISC-V machine, which helps both debugging and keeping the code close to the book.
-Future iterations will migrate this (and also System 3) to the mentioned Olimex board.
-
-Wirth's own compiler (OR) targets his RISC-5 architecture and compiles Oberon-07. 
-I could have added an RV32 back end to it; instead, this project reuses the OP2 compiler
-which I already used for the [migration of Oberon System 3 to the Raspberry Pi](https://github.com/rochus-keller/oberonsystem3native).
-OP2 is itself part of the ETH Oberon heritage; its front end/back end separation was designed exactly for this: 
-the same front end has produced code for SPARC, MIPS, i386, and recently ARMv7 and RV32.
-[My OP2 modifications](https://github.com/rochus-keller/op2/), the ARMv7 backend and boot linker have proven themselves in the System 3 migration.
-Extending OR would have meant maintaining another compiler. Migrating the system to the 1990 language 
-keeps one compiler for both migrated systems, and the source code is still close enough to the book to keep it useful.
-
-### Migration Details
-
-The original version of the Project Oberon source code was downloaded from 
-https://www.projectoberon.net/ on 2026-04-14.
-
-I particularly downloaded the following archives:
-- http://www.projectoberon.net/zip/inner.zip
-- http://www.projectoberon.net/zip/outer.zip
-- http://www.projectoberon.net/zip/systools.zip
-- http://www.projectoberon.net/zip/graph.zip
-- http://www.projectoberon.net/zip/apptools.zip
-
-The latest file modification date is 2018-11-28. Each subdirectory of this repository
-corresponds to the archive of the same name, besides apptools and systools which
-have been merged in files.
-
-Migrated all Oberon-07 sources to Oberon 90 so that they compile with the 
-ActiveOberon project o2c compiler and OP2. Some notes:
-
-- INTEGER renamed to LONGINT throughout
-- SYS.Mod provides the Oberon 07 built-ins not present in Oberon 90 
-- byte-sized data becomes SYSTEM.BYTE where possible, or CHAR where unavoidable
-- type case statements are expressed as IF with IS relation and type guards
-- array assignments that Oberon 90 rejects use COPY
-- Oberon 07 byte-string literals ($..$) are initialized at runtime via SYS.PutHex
-- ORD(SYSTEM.BYTE) is signed in OP2, so we use CHAR instead where necessary
-- SYSTEM.BIT with variable instead of constant address because of OP2 issue
-
-Implemented a RISC-V machine based on rv32emu similar to Wirth's RISC-5 described in PO book
-and made the necessary (minimal) changes to the Oberon code to run it.
-
-All modules are linked into the boot image by the boot linker and their bodies have been executed at startup,
-no dynamic loading.
-
-Added additional apps, see readme in corresponding subdirectory. 
+As in op2-rv32, all modules are linked into the boot image and their bodies are executed at startup;
+there is no dynamic loading. See Design.md for more information.
 
 ### Precompiled versions
 
 So far, the following version is available
 
-- [Linux x64](http://software.rochus-keller.ch/rv32_oberonsystem_linux_x64.tar.gz)
-- [Windows x86](http://software.rochus-keller.ch/rv32_oberonsystem_win32_x86.zip)
+- [Linux x64](http://software.rochus-keller.ch/rv32_micronsystem_linux_x64.tar.gz)
+- [Windows x86](http://software.rochus-keller.ch/rv32_micronsystem_win32_x86.zip)
 
-Note that the included po.bin and disk.img files work on all platforms. Only the rv32vm executable is
+Note that the included system.bin and disk.img files work on all platforms. Only the rv32vm executable is
 platform dependent. If you therefore just want to build the vm on another platform, you can reuse the other files.
 
 ### How to build
 
-There is a build.sh in the vm subdirectory which has to be run first. Then the build.sh in the root can be executed like
+The VM is built as described in the [op2-rv32 Readme](https://github.com/rochus-keller/OberonSystem/blob/op2-rv32/Readme.md)
+(build.sh in the vm subdirectory, or the qmake/BUSY alternatives described there).
+Then the build.sh in the root can be executed like
 
 - `./build.sh run` to build, pack and run the system in the VM
 - `./build.sh disk` to build and pack the system without running it
-- `./build.sh link` to build and link the system without creating the disk nor running it
-- `./build.sh` just compile all Oberon modules and stop
+- `./build.sh` to build and link the system without creating the disk nor running it
 
-The build scripts were implemented and tested on Debian Bookworm Linux. 
-
-There is also a qmake (vm.pro) project to build the VM which 
-is likely to work on macOS as well, but it has only been tested on Linux so far.
-
-The VM can also be built using the [BUSY build system](https://github.com/rochus-keller/BUSY);
-it only requires a C99 compiler and SDL2 and has successfully been tested on Linux and Windows. 
-An SDL2 development package matching your toolchain [has to be downloaded](https://github.com/libsdl-org/SDL/releases). 
-Use `-P win_sdl_dir=<path>` with path pointing to the root of the SDL2 directory (where `SDL2/include` and `SDL2/lib` exist).
-Run the system on Windows with `rv32vm.exe --base 0x0 --disk disk.img po.bin`
+The build scripts were implemented and tested on Debian Bookworm Linux.
 
 ### Credits
 
-- See oberon_license.txt which applies to the Oberon source code and documentation.
+- See oberon_license.txt which applies to the Oberon source code and documentation, and to the Micron source code.
 - See vm/rv32emu/README_orig.md and vm/rv32emu/LICENSE for more information about the RISC-V emulator.
 - See vm/softfloat/README_orig.md and vm/softfloat/COPYING.txt for more information about the Berkeley SoftFloat library.
 - The machine in the vm subdirectory is available under the terms of the GNU General Public License (GPL) versions 2.0 or 3.0 as published by the Free Software Foundation.
+
+
 

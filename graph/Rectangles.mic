@@ -1,0 +1,172 @@
+module Rectangles [level=5] // NW 25.2.90 / 18.4.2013 / RK 2026
+
+import SYS, Display, Files, Input, Texts, Oberon, Graphics, GraphicFrames
+
+type
+  AnyPtr = pointer to byte // helper type for Oberon addresses and SYSTEM.PTR
+  Rectangle* = pointer to RectDesc
+  RectDesc* = object (Graphics.ObjectDesc)
+    lw*: int32
+    vers*: int32
+  end
+
+var
+  method*: Graphics.Method
+  tack*: AnyPtr
+  grey*: AnyPtr
+  tackP, greyP: array 64 of byte
+
+procedure New*()
+  var r: Rectangle
+begin
+  newgc(r)
+  r.do_ := method
+  Graphics.New(r)
+end New
+
+procedure Copy(src, dst: Graphics.Object)
+begin
+  dst.x := src.x
+  dst.y := src.y
+  dst.w := src.w
+  dst.h := src.h
+  dst.col := src.col
+  dst(Rectangle).lw := src(Rectangle).lw
+  dst(Rectangle).vers := src(Rectangle).vers
+end Copy
+
+procedure mark(f: GraphicFrames.Frame; col, x, y: int32)
+begin
+  GraphicFrames.ReplConst(f, col, x + 1, y + 1, 4, 4, 0)
+end mark
+
+procedure Draw(obj: Graphics.Object; M: ^Graphics.Msg)
+  var x, y, w, h, lw, col: int32
+    f: GraphicFrames.Frame
+
+  procedure draw(f: GraphicFrames.Frame; col, x, y, w, h, lw: int32)
+  begin
+
+    GraphicFrames.ReplConst(f, col, x, y, w, lw, Display.replace)
+    GraphicFrames.ReplConst(f, col, x + w - lw, y, lw, h, Display.replace)
+    GraphicFrames.ReplConst(f, col, x, y + h - lw, w, lw, Display.replace)
+    GraphicFrames.ReplConst(f, col, x, y, lw, h, Display.replace)
+  end draw
+begin
+  case M of
+  | GraphicFrames.PDrawMsg:
+    x := obj.x + M.x
+    y := obj.y + M.y
+    w := obj.w
+    h := obj.h
+    f := M.f
+    lw := obj(Rectangle).lw
+    if (x < f.X1) & (x + w > f.X) & (y < f.Y1) & (y + h > f.Y) then
+      if M.col = Display.black then
+        col := +obj.col 
+      else
+        col := M.col
+      end
+      if M.mode = 0 then
+        draw(f, col, x, y, w, h, lw)
+        if obj.selected then
+          mark(f, Display.white, x, y)
+        end
+      elsif M.mode = 1 then
+        mark(f, Display.white, x, y) // normal -> selected
+      elsif M.mode = 2 then
+        mark(f, Display.black, x, y) // selected -> normal
+      elsif M.mode = 3 then
+        draw(f, Display.black, x, y, w, h, lw) // erase
+        mark(f, Display.black, x, y)
+      end
+    end
+  end
+end Draw
+
+procedure Selectable(obj: Graphics.Object; x, y: int32): boolean
+begin
+  return (obj.x <= x) & (x <= obj.x + 4) & (obj.y <= y) & (y <= obj.y + 4)
+end Selectable
+
+procedure Change(obj: Graphics.Object; M: ^Graphics.Msg)
+  var x0, y0, x1, y1, dx, dy: int32
+    k: set
+begin
+  case M of
+  | Graphics.PWidMsg:
+    obj(Rectangle).lw := M.w
+  | Graphics.PColorMsg:
+    obj.col := val(byte,M.col)
+  end
+end Change
+
+procedure Read(obj: Graphics.Object; R: ^Files.Rider; C: ^Graphics.Context)
+  var b: byte
+    len_: int32
+begin
+  Files.ReadByte(R, @b) // len
+  Files.ReadByte(R, @b)
+  obj(Rectangle).lw := sigc(b)
+  Files.ReadByte(R, @b)
+  obj(Rectangle).vers := sigc(b)
+end Read
+
+procedure Write(obj: Graphics.Object; cno: int32; W: ^Files.Rider; C: ^Graphics.Context)
+begin
+  Graphics.WriteObj(W, cno, obj)
+  Files.WriteByte(W, 2u1)
+  Files.WriteByte(W, val(byte, obj(Rectangle).lw))
+  Files.WriteByte(W, val(byte, obj(Rectangle).vers))
+end Write
+
+procedure Make*()
+  // command
+  var x0, x1, y0, y1: int32
+    R: Rectangle
+    G: GraphicFrames.Frame
+begin
+  G := GraphicFrames.Focus()
+  if (G # nil) & (G.mark.next # nil) then
+    GraphicFrames.Deselect(G)
+    x0 := G.mark.x
+    y0 := G.mark.y
+    x1 := G.mark.next.x
+    y1 := G.mark.next.y
+    newgc(R)
+    R.col := val(byte, Oberon.CurCol)
+    R.w := abs(x1 - x0)
+    R.h := abs(y1 - y0)
+    if x1 < x0 then
+      x0 := x1
+    end
+    if y1 < y0 then
+      y0 := y1
+    end
+    R.x := x0 - G.x
+    R.y := y0 - G.y
+    R.lw := Graphics.width
+    R.vers := 0
+    R.do_ := method
+    Graphics.Add(G.graph, R)
+    GraphicFrames.Defocus(G)
+    GraphicFrames.DrawObj(G, R)
+  end
+end Make
+
+begin
+  newgc(method)
+  copy(@method.module_, "Rectangles", Graphics.NameLen)
+  copy(@method.allocator, "New", Graphics.NameLen)
+  method.new_ := New
+  method.copy_ := Copy
+  method.draw := Draw
+  method.selectable := Selectable
+  method.change := Change
+  method.read := Read // method.print := Print
+  method.write := Write
+  tackP := $0707 4122 1408 1422 4100$
+  tack := cast(AnyPtr, @tackP)
+  greyP := $2004 0000 1111 1111 0000 0000 4444 4444 0000 0000$
+  grey := cast(AnyPtr, @greyP)
+end Rectangles.

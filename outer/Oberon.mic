@@ -1,0 +1,619 @@
+module Oberon [level=5] // JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015 / RK 2026
+
+import Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts
+
+const
+  consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2 // message ids
+  off = 0; idle = 1; active = 2 // task states
+  BasicCycle = 20
+  ESC = 1BX; SETSTAR = 1AX
+
+type
+  Painter* = procedure(x: int32; y: int32)
+  Marker* = record
+    Fade*: Painter
+    Draw*: Painter
+  end
+
+  Cursor* = record
+    marker*: Marker
+    on*: boolean
+    X*: int32
+    Y*: int32
+  end
+
+  InputMsg* = object (Display.FrameMsg)
+    id*: int32
+    keys*: set
+    X*: int32
+    Y*: int32
+    ch*: char
+    fnt*: Fonts.Font
+    col*: int32
+    voff*: int32
+  end
+  PInputMsg* = pointer to InputMsg
+
+  SelectionMsg* = object (Display.FrameMsg)
+    time*: int32
+    text*: Texts.Text
+    beg*: int32
+    end_*: int32
+  end
+  PSelectionMsg* = pointer to SelectionMsg
+
+  ControlMsg* = object (Display.FrameMsg)
+    id*: int32
+    X*: int32
+    Y*: int32
+  end
+  PControlMsg* = pointer to ControlMsg
+
+  CopyMsg* = object (Display.FrameMsg)
+    F*: Display.Frame
+  end
+  PCopyMsg* = pointer to CopyMsg
+
+  Task* = pointer to TaskDesc
+
+  Handler* = procedure()
+
+  TaskDesc* = record
+    state: int32
+    nextTime: int32
+    period*: int32
+    next: Task
+    handle: Handler
+  end
+
+var
+  User*: array 8 of char
+  Password*: int32
+  Arrow*: Marker
+  Star*: Marker
+  Mouse: Cursor
+  Pointer: Cursor
+  FocusViewer*: Viewers.Viewer
+  Log*: Texts.Text
+
+  Par*: record
+    vwr*: Viewers.Viewer
+    frame*: Display.Frame
+    text*: Texts.Text
+    pos*: int32
+  end
+
+  CurFnt*: Fonts.Font
+  CurCol*: int32
+  CurOff*: int32
+  NofTasks*: int32
+
+  CurTask: Task
+  DW: int32
+  DH: int32
+  CL: int32
+  ActCnt: int32 // action count for GC
+  Mod: Modules.Module
+
+// user identification
+
+procedure Code(s: pointer to array of char): int32
+  var i, a, b, c: int32
+begin
+  a := 0
+  b := 0
+  i := 0
+  while s[i] # 0X do
+    c := b
+    b := a
+    a := (c mod 509 + 1) * 127 + sigl(ord(s[i])) 
+    inc(i)
+  end
+  if b >= 32768 then
+    b := b - 65536
+  end
+  return b * 65536 + a
+end Code
+
+procedure SetUser*(user, password: pointer to array of char)
+begin
+  copy(@User, user, 8)
+  Password := Code(password)
+end SetUser
+
+procedure Clock*(): int32
+begin
+  return Kernel.Clock()
+end Clock
+
+procedure SetClock*(d: int32)
+begin
+  Kernel.SetClock(d)
+end SetClock
+
+procedure Time*(): int32
+begin
+  return Kernel.Time()
+end Time
+
+// cursor handling
+
+procedure FlipArrow(X, Y: int32)
+begin
+  if X < CL then
+    if X > DW - 15 then
+      X := DW - 15
+    end
+  else
+    if X > CL + DW - 15 then
+      X := CL + DW - 15
+    end
+  end
+  if Y < 14 then
+    Y := 14
+  elsif Y > DH then
+    Y := DH
+  end
+  Display.CopyPattern(Display.white, Display.arrow, X, Y - 14, Display.invert)
+end FlipArrow
+
+procedure FlipStar(X, Y: int32)
+begin
+  if X < CL then
+    if X < 7 then
+      X := 7
+    elsif X > DW - 8 then
+      X := DW - 8
+    end
+  else
+    if X < CL + 7 then
+      X := CL + 7
+    elsif X > CL + DW - 8 then
+      X := CL + DW - 8
+    end
+  end
+  if Y < 7 then
+    Y := 7
+  elsif Y > DH - 8 then
+    Y := DH - 8
+  end
+  Display.CopyPattern(Display.white, Display.star, X - 7, Y - 7, Display.invert)
+end FlipStar
+
+procedure OpenCursor(c: ^Cursor)
+begin
+  c.on := false
+  c.X := 0
+  c.Y := 0
+end OpenCursor
+
+procedure FadeCursor(c: ^Cursor)
+begin
+  if c.on then
+    c.marker.Fade(c.X, c.Y)
+    c.on := false
+  end
+end FadeCursor
+
+procedure DrawCursor(c: ^Cursor; m: Marker; x, y: int32)
+begin
+  if c.on & ((x # c.X) or (y # c.Y) or (m.Draw # c.marker.Draw)) then
+    c.marker.Fade(c.X, c.Y)
+    c.on := false
+  end
+  if ~c.on then
+    m.Draw(x, y)
+    c.marker := m
+    c.X := x
+    c.Y := y
+    c.on := true
+  end
+end DrawCursor
+
+procedure DrawMouse*(m: Marker; x, y: int32)
+begin
+  DrawCursor(@Mouse, m, x, y)
+end DrawMouse
+
+procedure DrawMouseArrow*(x, y: int32)
+begin
+  DrawCursor(@Mouse, Arrow, x, y)
+end DrawMouseArrow
+
+procedure FadeMouse*()
+begin
+  FadeCursor(@Mouse)
+end FadeMouse
+
+procedure DrawPointer*(x, y: int32)
+begin
+  DrawCursor(@Pointer, Star, x, y)
+end DrawPointer
+
+// display management
+
+procedure RemoveMarks*(X, Y, W, H: int32)
+begin
+  if (Mouse.X > X - 16) & (Mouse.X < X + W + 16) & (Mouse.Y > Y - 16) & (Mouse.Y < Y + H + 16) then
+    FadeCursor(@Mouse)
+  end
+  if (Pointer.X > X - 8) & (Pointer.X < X + W + 8) & (Pointer.Y > Y - 8) & (Pointer.Y < Y + H + 8) then
+    FadeCursor(@Pointer)
+  end
+end RemoveMarks
+
+procedure HandleFiller(V: Display.Frame; M: ^Display.FrameMsg)
+begin
+  case M of
+  | PInputMsg:
+    if M.id = track then
+      DrawCursor(@Mouse, Arrow, M.X, M.Y)
+    end
+  | PControlMsg:
+    if M.id = mark then
+      DrawCursor(@Pointer, Star, M.X, M.Y)
+    end
+  | Viewers.PViewerMsg:
+    if (M.id = Viewers.restore) & (V.W > 0) & (V.H > 0) then
+      RemoveMarks(V.X, V.Y, V.W, V.H)
+      Display.ReplConst(Display.black, V.X, V.Y, V.W, V.H, Display.replace)
+    elsif (M.id = Viewers.modify) & (M.Y < V.Y) then
+      RemoveMarks(V.X, M.Y, V.W, V.Y - M.Y)
+      Display.ReplConst(Display.black, V.X, M.Y, V.W, V.Y - M.Y, Display.replace)
+    end
+  end
+end HandleFiller
+
+procedure OpenDisplay*(UW, SW, H: int32)
+  var Filler: Viewers.Viewer
+begin
+  Input.SetMouseLimits(Viewers.curW + UW + SW, H)
+  Display.ReplConst(Display.black, Viewers.curW, 0, UW + SW, H, Display.replace)
+  newgc(Filler)
+  Filler.handle := HandleFiller
+  Viewers.InitTrack(UW, H, Filler) // init user track
+  newgc(Filler)
+  Filler.handle := HandleFiller
+  Viewers.InitTrack(SW, H, Filler) // init system track
+end OpenDisplay
+
+procedure DisplayWidth*(X: int32): int32
+begin
+  return DW
+end DisplayWidth
+
+procedure DisplayHeight*(X: int32): int32
+begin
+  return DH
+end DisplayHeight
+
+procedure OpenTrack*(X, W: int32)
+  var Filler: Viewers.Viewer
+begin
+  newgc(Filler)
+  Filler.handle := HandleFiller
+  Viewers.OpenTrack(X, W, Filler)
+end OpenTrack
+
+procedure UserTrack*(X: int32): int32
+begin
+  return X div DW * DW
+end UserTrack
+
+procedure SystemTrack*(X: int32): int32
+begin
+  return X div DW * DW + DW div 8 * 5
+end SystemTrack
+
+procedure UY(X: int32): int32
+  var h: int32
+    fil, bot, alt, max_: Display.Frame
+begin
+  Viewers.Locate(X, 0, @fil, @bot, @alt, @max_)
+  if fil.H >= DH div 8 then
+    h := DH
+  else
+    h := max_.Y + max_.H div 2
+  end
+  return h
+end UY
+
+procedure AllocateUserViewer*(DX: int32; X, Y: ^int32)
+begin
+  if Pointer.on then
+    X^ := Pointer.X
+    Y^ := Pointer.Y
+  else
+    X^ := DX div DW * DW
+    Y^ := UY(X^)
+  end
+end AllocateUserViewer
+
+procedure SY(X: int32): int32
+  var H0, H1, H2, H3, y: int32
+    fil, bot, alt, max_: Display.Frame
+begin
+  H3 := DH - DH div 3
+  H2 := H3 - H3 div 2
+  H1 := DH div 5
+  H0 := DH div 10
+  Viewers.Locate(X, DH, @fil, @bot, @alt, @max_)
+  if fil.H >= DH div 8 then
+    y := DH
+  elsif max_.H >= DH - H0 then
+    y := max_.Y + H3
+  elsif max_.H >= H3 - H0 then
+    y := max_.Y + H2
+  elsif max_.H >= H2 - H0 then
+    y := max_.Y + H1
+  elsif max_ # bot then
+    y := max_.Y + max_.H div 2
+  elsif bot.H >= H1 then
+    y := bot.H div 2
+  else
+    y := alt.Y + alt.H div 2
+  end
+  return y
+end SY
+
+procedure AllocateSystemViewer*(DX: int32; X, Y: ^int32)
+begin
+  if Pointer.on then
+    X^ := Pointer.X
+    Y^ := Pointer.Y
+  else
+    X^ := DX div DW * DW + DW div 8 * 5
+    Y^ := SY(X^)
+  end
+end AllocateSystemViewer
+
+procedure MarkedViewer*(): Viewers.Viewer
+begin
+  return Viewers.This(Pointer.X, Pointer.Y)
+end MarkedViewer
+
+procedure PassFocus*(V: Viewers.Viewer)
+  var M: ControlMsg
+begin
+  M.id := defocus
+  FocusViewer.handle(FocusViewer, @M)
+  FocusViewer := V
+end PassFocus
+
+procedure OpenLog*(T: Texts.Text)
+begin
+  Log := T
+end OpenLog
+
+// command interpretation
+procedure SetPar*(F: Display.Frame; T: Texts.Text; pos: int32)
+begin
+  Par.vwr := Viewers.This(F.X, F.Y)
+  Par.frame := F
+  Par.text := T
+  Par.pos := pos
+end SetPar
+
+procedure Call*(const name: pointer to array of char; res: ^int32)
+  var mod_: Modules.Module
+    P: Modules.Command
+    i, j: int32
+    ch: char
+    Mname, Cname: array 32 of char
+begin
+  i := 0
+  ch := name[0]
+  while (ch # ".") & (ch # 0X) do
+    Mname[i] := ch
+    inc(i)
+    ch := name[i]
+  end
+  if ch = "." then
+    Mname[i] := 0X
+    inc(i)
+    Modules.Load(@Mname, @mod_)
+    res^ := Modules.res
+    if Modules.res = 0 then
+      j := 0
+      ch := name[i]
+      inc(i)
+      while ch # 0X do
+        Cname[j] := ch
+        inc(j)
+        ch := name[i]
+        inc(i)
+      end
+      Cname[j] := 0X
+      P := Modules.ThisCommand(mod_, @Cname)
+      res^ := Modules.res
+      if Modules.res = 0 then
+        P()
+      end
+    end
+  else
+    res^ := 5
+  end
+end Call
+
+procedure GetSelection*(text: ^Texts.Text; beg, end_, time: ^int32)
+  var M: SelectionMsg
+begin
+  M.time := -1
+  Viewers.Broadcast(@M)
+  time^ := M.time
+  if time^ >= 0 then
+    text^ := M.text
+    beg^ := M.beg
+    end_^ := M.end_
+  end
+end GetSelection
+
+procedure GC()
+begin
+  if (ActCnt <= 0) or (Kernel.Available() <= 65536) then
+    Kernel.LED(33)
+    Files.RestoreList()
+    Kernel.LED(39)
+    Kernel.Collect() // the collector finds the roots itself, see Design.md
+    Kernel.LED(32)
+    ActCnt := BasicCycle
+  end
+end GC
+
+procedure NewTask*(h: Handler; period: int32): Task
+  var t: Task
+begin
+  newgc(t)
+  t.state := off
+  t.next := t
+  t.handle := h
+  t.period := period
+  return t
+end NewTask
+
+procedure Install*(T: Task)
+begin
+  if T.state = off then
+    T.next := CurTask.next
+    CurTask.next := T
+    T.state := idle
+    T.nextTime := 0
+    inc(NofTasks)
+  end
+end Install
+
+procedure Remove*(T: Task)
+  var t: Task
+begin
+  if T.state # off then
+    t := T
+    while t.next # T do
+      t := t.next
+    end
+    t.next := T.next
+    T.state := off
+    T.next := nil
+    CurTask := t
+    dec(NofTasks)
+  end
+end Remove
+
+procedure Collect*(count: int32)
+begin
+  ActCnt := count
+end Collect
+
+procedure SetFont*(fnt: Fonts.Font)
+begin
+  CurFnt := fnt
+end SetFont
+
+procedure SetColor*(col: int32)
+begin
+  CurCol := col
+end SetColor
+
+procedure SetOffset*(voff: int32)
+begin
+  CurOff := voff
+end SetOffset
+
+procedure Loop*()
+  var V: Viewers.Viewer
+    M: InputMsg
+    N: ControlMsg
+    prevX, prevY, X, Y, t: int32
+    keys: set
+    ch: char
+begin
+  repeat
+    Input.Mouse(@keys, @X, @Y)
+    if Input.Available() > 0 then
+      Input.Read(@ch)
+      if ch = ESC then
+        N.id := neutralize
+        Viewers.Broadcast(@N)
+        FadeCursor(@Pointer)
+        Kernel.LED(0)
+      elsif ch = SETSTAR then
+        N.id := mark
+        N.X := X
+        N.Y := Y
+        V := Viewers.This(X, Y)
+        V.handle(V, @N)
+      else
+        M.id := consume
+        M.ch := ch
+        M.fnt := CurFnt
+        M.col := CurCol
+        M.voff := CurOff
+        FocusViewer.handle(FocusViewer, @M)
+        dec(ActCnt)
+      end
+    elsif keys # {} then
+      M.id := track
+      M.X := X
+      M.Y := Y
+      M.keys := keys
+      repeat
+        V := Viewers.This(M.X, M.Y)
+        V.handle(V, @M)
+        Input.Mouse(@M.keys, @M.X, @M.Y)
+      until M.keys = {}
+      dec(ActCnt)
+    else
+      if (X # prevX) or (Y # prevY) or ~Mouse.on then
+        M.id := track
+        M.X := X
+        if Y >= Display.Height then
+          Y := Display.Height
+        end
+        M.Y := Y
+        M.keys := keys
+        V := Viewers.This(X, Y)
+        V.handle(V, @M)
+        prevX := X
+        prevY := Y
+      end
+      CurTask := CurTask.next
+      t := Kernel.Time()
+      if t >= CurTask.nextTime then
+        CurTask.nextTime := t + CurTask.period
+        CurTask.state := active
+        CurTask.handle()
+        CurTask.state := idle
+      end
+    end
+  until false
+end Loop
+
+procedure Reset*()
+begin
+  if CurTask.state = active then
+    Remove(CurTask)
+  end
+  // Reset is unreachable in this port because there are no traps, see Design.md
+  Loop()
+end Reset
+
+begin
+  User[0] := 0X
+  Arrow.Fade := FlipArrow
+  Arrow.Draw := FlipArrow
+  Star.Fade := FlipStar
+  Star.Draw := FlipStar
+  OpenCursor(@Mouse)
+  OpenCursor(@Pointer)
+  DW := Display.Width
+  DH := Display.Height
+  CL := DW
+  OpenDisplay(DW div 8 * 5, DW div 8 * 3, DH)
+  FocusViewer := Viewers.This(0, 0)
+  CurFnt := Fonts.Default
+  CurCol := Display.white
+  CurOff := 0
+  ActCnt := 0
+  CurTask := NewTask(GC, 1000)
+  Install(CurTask)
+  // Loop is started by Main, see Design.md
+end Oberon.

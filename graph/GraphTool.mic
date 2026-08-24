@@ -1,0 +1,406 @@
+module GraphTool [level=5] // NW  8.8.2013 / RK 2026
+
+import Files, Texts, Oberon
+
+const
+  Context = 0
+  Line = 1
+  Caption = 2
+  Macro = 3
+  Rectangles = 4
+
+var
+  W: Texts.Writer
+  
+procedure DecGraph*()
+  var ch: char
+    class, col, fno, cat, inx, libno: byte
+    xy, wh: int32
+    name: array 32 of char
+    F: Files.File
+    R: Files.Rider
+    S: Texts.Scanner
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Name then
+    Texts.WriteString(@W, "decode ")
+    Texts.WriteString(@W, @S.s)
+    Texts.WriteLn(@W)
+    Texts.Append(Oberon.Log, W.buf)
+    F := Files.Old(@S.s)
+    if F # nil then
+      Files.Set(@R, F, 0)
+      Files.Read(@R, @ch)
+      if ch = 0F8X then
+        Files.ReadByte(@R, @class)
+        while ~R.eof & (class < 255) do
+          Texts.WriteInt(@W, sigl(class), 4)
+          if class = Context then
+            Files.ReadByte(@R, @cat)
+            Files.ReadByte(@R, @inx)
+            Texts.WriteInt(@W, sigl(cat), 4)
+            Texts.WriteInt(@W, sigl(inx), 4)
+            Files.ReadString(@R, @name, 32)
+            Texts.Write(@W, " ")
+            Texts.WriteString(@W, @name)
+            if cat = 2 then
+              Files.ReadString(@R, @name, 32)
+              Texts.Write(@W, " ")
+              Texts.WriteString(@W, @name)
+            end
+          else
+            Files.ReadInt(@R, @xy)
+            Texts.WriteInt(@W, xy * 65536 div 65536, 5)
+            Texts.WriteInt(@W, xy div 65536, 5)
+            Files.ReadInt(@R, @wh)
+            Texts.WriteInt(@W, wh * 65536 div 65536, 5)
+            Texts.WriteInt(@W, wh div 65536, 5)
+            Files.ReadByte(@R, @col)
+            Files.Read(@R, @ch)
+            Texts.WriteInt(@W, sigl(col), 5)
+            Texts.Write(@W, "|")
+            if class = Line then
+            elsif class = Caption then
+              Files.ReadByte(@R, @fno)
+              Texts.WriteInt(@W, sigl(fno), 5)
+              Texts.Write(@W, " ")
+              Files.ReadString(@R, @name, 32)
+              Texts.WriteString(@W, @name)
+            elsif class = Macro then
+              Files.ReadByte(@R, @libno)
+              Files.ReadString(@R, @name, 32)
+              Texts.WriteInt(@W, sigl(libno), 4)
+              Texts.Write(@W, " ")
+              Texts.WriteString(@W, @name)
+            elsif class = Rectangles then
+              Files.ReadByte(@R, @fno)
+              Texts.WriteInt(@W, sigl(fno), 4)
+              Files.ReadByte(@R, @fno)
+              Texts.WriteInt(@W, sigl(fno), 4)
+              Files.ReadByte(@R, @fno)
+              Texts.WriteInt(@W, sigl(fno), 4)
+            else
+              Texts.WriteString(@W, "other class =")
+              Texts.WriteInt(@W, sigl(class), 4)
+            end
+          end
+          Texts.WriteLn(@W)
+          Files.ReadByte(@R, @class)
+        end
+      else
+        Texts.WriteString(@W, " not a graphics file")
+      end
+    else
+      Texts.WriteString(@W, " not found")
+    end
+    Texts.WriteLn(@W)
+    Texts.Append(Oberon.Log, W.buf)
+  end
+end DecGraph
+
+procedure DecGraph1*()
+  var ch: char
+    class, col, fno, len_, lw, vers, cat, inx, libno: byte
+    xy, wh: int32
+    name: array 32 of char
+    F: Files.File
+    R: Files.Rider
+    S: Texts.Scanner
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Name then
+    Texts.WriteString(@W, "decode ")
+    Texts.WriteString(@W, @S.s)
+    Texts.WriteLn(@W)
+    Texts.Append(Oberon.Log, W.buf)
+    F := Files.Old(@S.s)
+    if F # nil then
+      Files.Set(@R, F, 0)
+      Files.Read(@R, @ch)
+      if ch = 0FAX then
+        Files.ReadByte(@R, @class)
+        while ~R.eof & (class < 255) do
+          Texts.WriteInt(@W, sigl(class), 4)
+          if class = Context then
+            Files.ReadByte(@R, @cat)
+            Files.ReadByte(@R, @inx)
+            Texts.WriteInt(@W, sigl(cat), 4)
+            Texts.WriteInt(@W, sigl(inx), 4)
+            Files.ReadString(@R, @name, 32)
+            Texts.Write(@W, " ")
+            Texts.WriteString(@W, @name)
+            if cat = 2 then
+              Files.ReadString(@R, @name, 32)
+              Texts.Write(@W, " ")
+              Texts.WriteString(@W, @name)
+            end
+          else
+            Files.ReadInt(@R, @xy)
+            Texts.WriteInt(@W, xy * 65536 div 65536, 5)
+            Texts.WriteInt(@W, xy div 65536, 5)
+            Files.ReadInt(@R, @wh)
+            Texts.WriteInt(@W, wh * 65536 div 65536, 5)
+            Texts.WriteInt(@W, wh div 65536, 5)
+            Files.ReadByte(@R, @col)
+            Texts.WriteInt(@W, sigl(col), 5)
+            Texts.Write(@W, "|")
+            if class = Line then
+            elsif class = Caption then
+              Files.ReadByte(@R, @fno)
+              Texts.WriteInt(@W, sigl(fno), 5)
+              Texts.Write(@W, " ")
+              Files.ReadString(@R, @name, 32)
+              Texts.WriteString(@W, @name)
+            elsif class = Macro then
+              Files.ReadByte(@R, @libno)
+              Files.ReadString(@R, @name, 32)
+              Texts.WriteInt(@W, sigl(libno), 4)
+              Texts.Write(@W, " ")
+              Texts.WriteString(@W, @name)
+            elsif class = Rectangles then
+              Files.ReadByte(@R, @len_)
+              Texts.WriteInt(@W, sigl(len_), 4)
+              Files.ReadByte(@R, @lw)
+              Texts.WriteInt(@W, sigl(lw), 4)
+              Files.ReadByte(@R, @vers)
+              Texts.WriteInt(@W, sigl(vers), 4)
+            else
+              Texts.WriteString(@W, "other class =")
+              Texts.WriteInt(@W, sigl(class), 4)
+            end
+          end
+          Texts.WriteLn(@W)
+          Files.ReadByte(@R, @class)
+        end
+      else
+        Texts.WriteString(@W, " not a graphics file")
+      end
+    else
+      Texts.WriteString(@W, " not found")
+    end
+    Texts.WriteLn(@W)
+    Texts.Append(Oberon.Log, W.buf)
+  end
+end DecGraph1
+
+procedure DecLibrary1*()
+  var ch: char
+    class, col, fno, cat, inx, libno, len_, lnw, vers: byte
+    xy, wh: int32
+    name: array 32 of char
+    F: Files.File
+    R: Files.Rider
+    S: Texts.Scanner
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Name then
+    Texts.WriteString(@W, "decode library1 ")
+    Texts.WriteString(@W, @S.s)
+    Texts.WriteLn(@W)
+    Texts.Append(Oberon.Log, W.buf)
+    F := Files.Old(@S.s)
+    if F # nil then
+      Files.Set(@R, F, 0)
+      Files.Read(@R, @ch)
+      if ch = 0FBX then
+        Files.ReadByte(@R, @class)
+        while (class < 255) & ~R.eof do
+          while class < 255 do
+            Texts.WriteInt(@W, sigl(class), 4)
+            if class = Context then
+              Files.ReadByte(@R, @cat)
+              Files.ReadByte(@R, @inx)
+              Texts.WriteInt(@W, sigl(cat), 4)
+              Texts.WriteInt(@W, sigl(inx), 4)
+              Files.ReadString(@R, @name, 32)
+              Texts.Write(@W, " ")
+              Texts.WriteString(@W, @name)
+              if cat = 2 then
+                Files.ReadString(@R, @name, 32)
+                Texts.Write(@W, " ")
+                Texts.WriteString(@W, @name)
+              end
+            else
+              Files.ReadInt(@R, @xy)
+              Texts.WriteInt(@W, xy * 65536 div 65536, 5)
+              Texts.WriteInt(@W, xy div 65536, 5)
+              Files.ReadInt(@R, @wh)
+              Texts.WriteInt(@W, wh * 65536 div 65536, 5)
+              Texts.WriteInt(@W, wh div 65536, 5)
+              Files.ReadByte(@R, @col)
+              Texts.WriteInt(@W, sigl(col), 5)
+              if class = Line then
+              elsif class = Caption then
+                Texts.Write(@W, "|")
+                Files.ReadByte(@R, @fno)
+                Texts.WriteInt(@W, sigl(fno), 5)
+                Texts.Write(@W, " ")
+                Files.ReadString(@R, @name, 32)
+                Texts.WriteString(@W, @name)
+              elsif class = Rectangles then
+                Texts.Write(@W, "|")
+                Files.ReadByte(@R, @len_)
+                Texts.WriteInt(@W, sigl(len_), 4)
+                Files.ReadByte(@R, @lnw)
+                Texts.WriteInt(@W, sigl(lnw), 4)
+                Files.ReadByte(@R, @vers)
+                Texts.WriteInt(@W, sigl(vers), 4)
+              else
+                Texts.WriteString(@W, "other class =")
+                Texts.WriteInt(@W, sigl(class), 4)
+              end
+            end
+            Texts.WriteLn(@W)
+            Files.ReadByte(@R, @class)
+          end
+          // end macro
+          Texts.WriteString(@W, "---")
+          Files.ReadInt(@R, @wh)
+          Texts.WriteInt(@W, wh mod 65536, 5)
+          Texts.WriteInt(@W, wh div 65536, 5)
+          Files.ReadString(@R, @name, 32)
+          Texts.Write(@W, " ")
+          Texts.WriteString(@W, @name)
+          Texts.WriteLn(@W)
+          Texts.Append(Oberon.Log, W.buf)
+          Files.ReadByte(@R, @class)
+        end
+      else
+        Texts.WriteString(@W, " not a graphics library")
+      end
+    else
+      Texts.WriteString(@W, " not found")
+    end
+    Texts.WriteLn(@W)
+    Texts.Append(Oberon.Log, W.buf)
+  end
+end DecLibrary1
+
+procedure ConvertFontname(x: pointer to array of char)
+begin
+  // Syntax --> Oberon
+  if (x[0] = "S") & (x[1] = "y") & (x[2] = "n") & (x[3] = "t") & (x[4] = "a") & (x[5] = "x") then
+    x[0] := "O"
+    x[1] := "b"
+    x[2] := "e"
+    x[3] := "r"
+    x[4] := "o"
+    x[5] := "n"
+  end
+end ConvertFontname
+
+procedure ConvertLibrary*()
+  var ch: char
+    class, col, fno, cat, inx, libno, len_, lnw, vers: byte
+    xy, wh: int32
+    name: array 32 of char
+    F, G: Files.File
+    R, Q: Files.Rider
+    S: Texts.Scanner
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Name then
+    Texts.WriteString(@W, "convert library ")
+    Texts.WriteString(@W, @S.s)
+    F := Files.Old(@S.s)
+    if F # nil then
+      Texts.Scan(@S)
+      G := Files.New(@S.s)
+      Texts.WriteString(@W, " => ")
+      Texts.WriteString(@W, @S.s)
+      Texts.WriteLn(@W)
+      Texts.Append(Oberon.Log, W.buf)
+      Files.Set(@R, F, 0)
+      Files.Set(@Q, G, 0)
+      Files.Read(@R, @ch)
+      if ch = 0FDX then
+        Files.Write(@Q, 0FBX)
+        Files.ReadByte(@R, @class)
+        while (class < 255) & ~R.eof do
+          while class < 255 do
+            Files.WriteByte(@Q, class)
+            if class = Context then
+              Files.ReadByte(@R, @cat)
+              Files.ReadByte(@R, @inx)
+              Texts.WriteInt(@W, sigl(cat), 4)
+              Texts.WriteInt(@W, sigl(inx), 4)
+              Files.WriteByte(@Q, cat)
+              Files.WriteByte(@Q, inx)
+              Files.ReadString(@R, @name, 32)
+              Texts.Write(@W, " ")
+              Texts.WriteString(@W, @name)
+              if cat = 0 then // font
+                ConvertFontname(@name)
+              end
+              Files.WriteString(@Q, @name)
+              if cat = 2 then // class
+                Files.ReadString(@R, @name, 32)
+                Texts.Write(@W, " ")
+                Texts.WriteString(@W, @name)
+                Files.WriteString(@Q, @name)
+              end
+              Texts.WriteLn(@W)
+              Texts.Append(Oberon.Log, W.buf)
+            else
+              Files.ReadInt(@R, @xy)
+              Files.WriteInt(@Q, xy)
+              Files.ReadInt(@R, @wh)
+              Files.WriteInt(@Q, wh)
+              Files.ReadByte(@R, @col)
+              Files.Read(@R, @ch)
+              Files.WriteByte(@Q, 1u1)
+              if class = Line then
+              elsif class = Caption then
+                Files.ReadByte(@R, @fno)
+                Files.WriteByte(@Q, fno)
+                Files.ReadString(@R, @name, 32)
+                Files.WriteString(@Q, @name)
+              elsif class = Rectangles then
+                Files.ReadByte(@R, @len_)
+                Files.WriteByte(@Q, len_)
+                Files.ReadByte(@R, @len_)
+                Files.ReadByte(@R, @lnw)
+                Files.WriteByte(@Q, lnw)
+                Files.ReadByte(@R, @vers)
+                Files.WriteByte(@Q, vers)
+              else
+                Texts.WriteString(@W, "alien class ")
+                Texts.WriteInt(@W, sigl(class), 4)
+              end
+            end
+            Files.ReadByte(@R, @class)
+          end
+          Files.WriteByte(@Q, 0FFH) // end macro
+          Files.ReadInt(@R, @wh)
+          Files.WriteInt(@Q, wh)
+          Files.ReadString(@R, @name, 32)
+          Files.WriteString(@Q, @name)
+          Texts.WriteString(@W, @name)
+          Texts.WriteInt(@W, wh mod 65536, 4)
+          Texts.WriteInt(@W, wh div 65536, 4)
+          Texts.WriteLn(@W)
+          Files.ReadByte(@R, @class)
+        end
+      else
+        Texts.WriteString(@W, " not a graphics library")
+      end
+      Files.Register(G)
+      Texts.WriteString(@W, " done")
+    else
+      Texts.WriteString(@W, " not found")
+    end
+    Texts.WriteLn(@W)
+    Texts.Append(Oberon.Log, W.buf)
+  end
+end ConvertLibrary
+
+begin
+  Texts.OpenWriter(@W)
+  Texts.WriteString(@W, "GraphTool 8.8.2013")
+  Texts.WriteLn(@W)
+  Texts.Append(Oberon.Log, W.buf)
+end GraphTool.

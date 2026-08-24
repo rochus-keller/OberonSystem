@@ -1,0 +1,945 @@
+module Texts [level=5] // JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 20.3.2017 / RK 2026
+
+import SYS, Files, Fonts
+
+// scanner symbol classes
+
+const
+  Inval* = 0 // invalid symbol
+  Name* = 1 // name s (length len)
+  String* = 2 // literal string s (length len)
+  Int* = 3 // integer i (decimal or hexadecimal)
+  Real* = 4 // real number x
+  Char* = 6 // special character c
+
+  (* TextBlock = TextTag "1" offset run {run} "0" len {AsciiCode}.
+  run = fnt [name] col voff len. *)
+
+  TAB = 9X
+  CR = 0DX
+  maxD = 9
+  TextTag = 0F1X
+
+type
+  Op* = (replace, insert, delete, unmark) // op-codes of the notifier
+
+  Piece = pointer to PieceDesc
+  PieceDesc = record
+    f: Files.File
+    off: int32
+    len_: int32
+    fnt: Fonts.Font
+    col: int32
+    voff: int32
+    prev: Piece
+    next: Piece
+  end
+
+  Text* = pointer to TextDesc
+  Notifier* = procedure(T: Text; op: Op; beg, end_: int32)
+  TextDesc* = record
+    len_*: int32
+    changed*: boolean
+    notify*: Notifier
+    trailer: Piece
+    pce: Piece // cache
+    org: int32 // cache
+  end
+
+  Reader* = object
+    eot*: boolean
+    fnt*: Fonts.Font
+    col*: int32
+    voff*: int32
+    ref: Piece
+    org: int32
+    off: int32
+    rider: Files.Rider
+  end
+  PReader* = pointer to Reader
+
+  Scanner* = object (Reader)
+    nextCh*: char
+    line*: int32
+    class*: int32
+    i*: int32
+    x*: real
+    y*: longreal
+    c*: char
+    len_*: int32
+    s*: array 32 of char
+  end
+  PScanner* = pointer to Scanner
+
+  Buffer* = pointer to BufDesc
+  BufDesc* = record
+    len_*: int32
+    header: Piece
+    last: Piece
+  end
+
+  Writer* = record
+    buf*: Buffer
+    fnt*: Fonts.Font
+    col*: int32
+    voff*: int32
+    rider: Files.Rider
+  end
+
+var
+  TrailerFile: Files.File
+
+// -------------------- Filing ------------------------
+
+procedure Trailer(): Piece
+  var Q: Piece
+begin
+  newgc(Q)
+  Q.f := TrailerFile
+  Q.off := -1
+  Q.len_ := 1
+  Q.fnt := nil
+  Q.col := 0
+  Q.voff := 0
+  return Q
+end Trailer
+
+procedure Load*(R: ^Files.Rider; T: Text)
+  var Q, q, p: Piece
+    off, N, fno: int32
+    bt: byte
+    f: Files.File
+    FName: array 32 of char
+    Dict: array 32 of Fonts.Font
+begin
+  f := Files.Base(R)
+  N := 1
+  Q := Trailer()
+  p := Q
+  Files.ReadInt(R, @off)
+  Files.ReadByte(R, @bt)
+  fno := +bt
+  while fno # 0 do
+    if fno = N then
+      Files.ReadString(R, @FName, 32)
+      Dict[N] := Fonts.This(@FName)
+      inc(N)
+    end
+    newgc(q)
+    q.fnt := Dict[fno]
+    Files.ReadByte(R, @bt)
+    q.col := +bt
+    Files.ReadByte(R, @bt)
+    q.voff := cast(int8, bt) // the byte is a signed offset
+    Files.ReadInt(R, @q.len_)
+    Files.ReadByte(R, @bt)
+    fno := +bt
+    q.f := f
+    q.off := off
+    off := off + q.len_
+    p.next := q
+    q.prev := p
+    p := q
+  end
+  p.next := Q
+  Q.prev := p
+  T.trailer := Q // Files.Set(R, f, Files.Pos(R) + T.len)
+  Files.ReadInt(R, @T.len_)
+end Load
+
+procedure Open*(T: Text; const name: pointer to array of char)
+  var f: Files.File
+    R: Files.Rider
+    Q, q: Piece
+    tag: char
+    len_: int32
+begin
+  f := Files.Old(name)
+  if f # nil then
+    Files.Set(@R, f, 0)
+    Files.Read(@R, @tag)
+    if tag = TextTag then
+      Load(@R, T)
+    else // Ascii file
+      len_ := Files.Length(f)
+      Q := Trailer()
+      newgc(q)
+      q.fnt := Fonts.Default
+      q.col := 1
+      q.voff := 0
+      q.f := f
+      q.off := 0
+      q.len_ := len_
+      Q.next := q
+      q.prev := Q
+      q.next := Q
+      Q.prev := q
+      T.trailer := Q
+      T.len_ := len_
+    end
+  else // create new text
+    Q := Trailer()
+    Q.next := Q
+    Q.prev := Q
+    T.trailer := Q
+    T.len_ := 0
+  end
+  T.changed := false // init cache
+  T.org := -1
+  T.pce := T.trailer
+end Open
+
+procedure Store*(W: ^Files.Rider; T: Text)
+  var p, q: Piece
+    R: Files.Rider
+    off, rlen, pos, N, n: int32
+    ch: char
+    Dict: array 32 of array 32 of char
+begin
+  pos := Files.Pos(W) // place holder
+  Files.WriteInt(W, 0)
+  N := 1
+  p := T.trailer.next
+  while p # T.trailer do
+    rlen := p.len_
+    q := p.next
+    while (q # T.trailer) & (q.fnt = p.fnt) & (q.col = p.col) & (q.voff = p.voff) do
+      rlen := rlen + q.len_
+      q := q.next
+    end
+    copy(@Dict[N], @p.fnt.name, 32)
+    n := 1
+    while Dict[n] # p.fnt.name do
+      inc(n)
+    end
+    Files.WriteByte(W, val(byte, n))
+    if n = N then
+      Files.WriteString(W, @p.fnt.name)
+      inc(N)
+    end
+    Files.WriteByte(W, val(byte, p.col))
+    Files.WriteByte(W, val(byte, p.voff mod 256))
+    Files.WriteInt(W, rlen)
+    p := q
+  end
+  Files.WriteByte(W, 0u1)
+  Files.WriteInt(W, T.len_)
+  off := Files.Pos(W)
+  p := T.trailer.next
+  while p # T.trailer do
+    rlen := p.len_
+    Files.Set(@R, p.f, p.off)
+    while rlen > 0 do
+      Files.Read(@R, @ch)
+      Files.Write(W, ch)
+      dec(rlen)
+    end
+    p := p.next
+  end
+  Files.Set(W, Files.Base(W), pos) // fixup
+  Files.WriteInt(W, off)
+  T.changed := false
+  if T.notify # nil then
+    T.notify(T, unmark, 0, 0)
+  end
+end Store
+
+procedure Close*(T: Text; const name: pointer to array of char)
+  var f: Files.File
+    w: Files.Rider
+begin
+  f := Files.New(name)
+  Files.Set(@w, f, 0)
+  Files.Write(@w, TextTag)
+  Store(@w, T)
+  Files.Register(f)
+end Close
+
+// -------------------- Editing -----------------------
+
+procedure OpenBuf*(B: Buffer)
+begin
+  newgc(B.header) // null piece
+  B.last := B.header
+  B.len_ := 0
+end OpenBuf
+
+procedure FindPiece(T: Text; pos: int32; org: ^int32; pce: ^Piece)
+  var p: Piece
+    porg: int32
+begin
+  p := T.pce
+  porg := T.org
+  if pos >= porg then
+    while pos >= porg + p.len_ do
+      inc(porg, p.len_)
+      p := p.next
+    end
+  else
+    p := p.prev
+    dec(porg, p.len_)
+    while pos < porg do
+      p := p.prev
+      dec(porg, p.len_)
+    end
+  end
+  T.pce := p // update cache
+  T.org := porg
+  pce^ := p
+  org^ := porg
+end FindPiece
+
+procedure SplitPiece(p: Piece; off: int32; pr: ^Piece)
+  var q: Piece
+begin
+  if off > 0 then
+    newgc(q)
+    q.fnt := p.fnt
+    q.col := p.col
+    q.voff := p.voff
+    q.len_ := p.len_ - off
+    q.f := p.f
+    q.off := p.off + off
+    p.len_ := off
+    q.next := p.next
+    p.next := q
+    q.prev := p
+    q.next.prev := q
+    pr^ := q
+  else
+    pr^ := p
+  end
+end SplitPiece
+
+procedure Save*(T: Text; beg, end_: int32; B: Buffer)
+  var p, q, qb, qe: Piece
+    org: int32
+begin
+  if end_ > T.len_ then
+    end_ := T.len_
+  end
+  FindPiece(T, beg, @org, @p)
+  newgc(qb)
+  qb^ := p^
+  qb.len_ := qb.len_ - (beg - org)
+  qb.off := qb.off + (beg - org)
+  qe := qb
+  while end_ > org + p.len_ do
+    org := org + p.len_
+    p := p.next
+    newgc(q)
+    q^ := p^
+    qe.next := q
+    q.prev := qe
+    qe := q
+  end
+  qe.next := nil
+  qe.len_ := qe.len_ - (org + p.len_ - end_)
+  B.last.next := qb
+  qb.prev := B.last
+  B.last := qe
+  B.len_ := B.len_ + (end_ - beg)
+end Save
+
+procedure Copy*(SB, DB: Buffer)
+  var Q, q, p: Piece
+begin
+  p := SB.header
+  Q := DB.last
+  while p # SB.last do
+    p := p.next
+    newgc(q)
+    q^ := p^
+    Q.next := q
+    q.prev := Q
+    Q := q
+  end
+  DB.last := Q
+  DB.len_ := DB.len_ + SB.len_
+end Copy
+
+procedure Insert*(T: Text; pos: int32; B: Buffer)
+  var pl, pr, p, qb, qe: Piece
+    org, end_: int32
+begin
+  FindPiece(T, pos, @org, @p)
+  SplitPiece(p, pos - org, @pr)
+  if T.org >= org then
+    T.org := org - p.prev.len_
+    T.pce := p.prev
+  end
+  pl := pr.prev
+  qb := B.header.next
+  if (qb # nil) & (qb.f = pl.f) & (qb.off = pl.off + pl.len_) & (qb.fnt = pl.fnt) & (qb.col = pl.col) & (qb.voff = pl.voff) then
+    pl.len_ := pl.len_ + qb.len_
+    qb := qb.next
+  end
+  if qb # nil then
+    qe := B.last
+    qb.prev := pl
+    pl.next := qb
+    qe.next := pr
+    pr.prev := qe
+  end
+  T.len_ := T.len_ + B.len_
+  end_ := pos + B.len_
+  B.last := B.header
+  B.last.next := nil
+  B.len_ := 0
+  T.changed := true
+  T.notify(T, insert, pos, end_)
+end Insert
+
+procedure Append*(T: Text; B: Buffer)
+begin
+  Insert(T, T.len_, B)
+end Append
+
+procedure Delete*(T: Text; beg, end_: int32; B: Buffer)
+  var pb, pe, pbr, per: Piece
+    orgb, orge: int32
+begin
+  if end_ > T.len_ then
+    end_ := T.len_
+  end
+  FindPiece(T, beg, @orgb, @pb)
+  SplitPiece(pb, beg - orgb, @pbr)
+  FindPiece(T, end_, @orge, @pe)
+  SplitPiece(pe, end_ - orge, @per)
+  if T.org >= orgb then // adjust cache
+    T.org := orgb - pb.prev.len_
+    T.pce := pb.prev
+  end
+  B.header.next := pbr
+  B.last := per.prev
+  B.last.next := nil
+  B.len_ := end_ - beg
+  per.prev := pbr.prev
+  pbr.prev.next := per
+  T.len_ := T.len_ - B.len_
+  T.changed := true
+  T.notify(T, delete, beg, end_)
+end Delete
+
+procedure ChangeLooks*(T: Text; beg, end_: int32; sel: set; fnt: Fonts.Font; col, voff: int32)
+  var pb, pe, p: Piece
+    org: int32
+begin
+  if end_ > T.len_ then
+    end_ := T.len_
+  end
+  FindPiece(T, beg, @org, @p)
+  SplitPiece(p, beg - org, @pb)
+  FindPiece(T, end_, @org, @p)
+  SplitPiece(p, end_ - org, @pe)
+  p := pb
+  repeat
+    if 0 in sel then
+      p.fnt := fnt
+    end
+    if 1 in sel then
+      p.col := col
+    end
+    if 2 in sel then
+      p.voff := voff
+    end
+    p := p.next
+  until p = pe
+  T.changed := true
+  T.notify(T, replace, beg, end_)
+end ChangeLooks
+
+procedure Attributes*(T: Text; pos: int32; fnt: ^Fonts.Font; col, voff: ^int32)
+  var p: Piece
+    org: int32
+begin
+  FindPiece(T, pos, @org, @p)
+  fnt^ := p.fnt
+  col^ := p.col
+  voff^ := p.voff
+end Attributes
+
+// ------------------ Access: Readers -------------------------
+
+procedure OpenReader*(R: ^Reader; T: Text; pos: int32)
+  var p: Piece
+    org: int32
+begin
+  FindPiece(T, pos, @org, @p)
+  R.ref := p
+  R.org := org
+  R.off := pos - org
+  Files.Set(@R.rider, p.f, p.off + R.off)
+  R.eot := false
+end OpenReader
+
+procedure Read*(R: ^Reader; ch: ^char)
+begin
+  Files.Read(@R.rider, ch)
+  R.fnt := R.ref.fnt
+  R.col := R.ref.col
+  R.voff := R.ref.voff
+  inc(R.off)
+  if R.off = R.ref.len_ then
+    if R.ref.f = TrailerFile then
+      R.eot := true
+    end
+    R.org := R.org + R.off
+    R.off := 0
+    R.ref := R.ref.next
+    R.org := R.org + R.off
+    R.off := 0
+    Files.Set(@R.rider, R.ref.f, R.ref.off)
+  end
+end Read
+
+procedure Pos*(R: ^Reader): int32
+begin
+  return R.org + R.off
+end Pos
+
+// ------------------ Access: Scanners (NW) -------------------------
+
+procedure OpenScanner*(S: ^Scanner; T: Text; pos: int32)
+begin
+  OpenReader(S, T, pos)
+  S.line := 0
+  S.nextCh := " "
+end OpenScanner
+
+(*floating point formats:
+x = 1.m * 2^(e-127)   bit 0: sign, bits 1- 8: e, bits  9-31: m
+x = 1.m * 2^(e-1023)  bit 0: sign, bits 1-11: e, bits 12-63: m *)
+
+procedure Ten(n: int32): real
+  var t, p: real
+begin
+  t := 1.0 // compute 10^n
+  p := 10.0
+  while n > 0 do
+    if ((n mod 2) # 0) then
+      t := p * t
+    end
+    p := p * p
+    n := n div 2
+  end
+  return t
+end Ten
+
+procedure Scan*(S: ^Scanner)
+  const
+    maxExp = 38 // 2^24
+    maxM = 16777216
+  var ch, term: char
+    neg, negE, hex: boolean
+    i, j, h, d, e, n, s, k: int32
+    x: real
+begin
+  ch := S.nextCh
+  i := 0
+  while ~S.eot & (ch <= " ") do
+    if ch = CR then
+      inc(S.line)
+    end
+    Read(S, @ch)
+  end
+  if ("A" <= ch) & (ch <= "Z") or ("a" <= ch) & (ch <= "z") then // name
+    repeat
+      S.s[i] := ch
+      inc(i)
+      Read(S, @ch)
+    until (ch < "0") & (ch # ".") or ("9" < ch) & (ch < "A") or ("Z" < ch) & (ch < "a") or ("z" < ch) or (i = 31)
+    S.s[i] := 0X
+    S.len_ := i
+    S.class := Name
+  elsif ch = 22X then // string
+    Read(S, @ch)
+    while (ch # 22X) & (ch >= " ") & (i # 31) do
+      S.s[i] := ch
+      inc(i)
+      Read(S, @ch)
+    end
+    S.s[i] := 0X
+    S.len_ := i + 1
+    Read(S, @ch)
+    S.class := String
+  else
+    hex := false
+    if ch = "-" then
+      neg := true
+      Read(S, @ch)
+    else
+      neg := false
+    end
+    if ("0" <= ch) & (ch <= "9") then
+      // number
+      n := sigc(ord(ch) - ord("0"))
+      h := n
+      Read(S, @ch)
+      while ("0" <= ch) & (ch <= "9") or ("A" <= ch) & (ch <= "F") do
+        if ch <= "9" then
+          d := sigc(ord(ch) - ord("0"))
+        else
+          d := sigc(ord(ch) - ord("A")) + 10
+          hex := true
+        end
+        n := 10 * n + d
+        h := 16 * h + d
+        Read(S, @ch)
+      end
+      if ch = "H" then // hex integer
+        Read(S, @ch) // neg?
+        S.i := h
+        S.class := Int
+      elsif ch = "." then // real number
+        Read(S, @ch)
+        x := 0.0
+        e := 0
+        j := 0
+        while ("0" <= ch) & (ch <= "9") do // fraction
+          h := 10 * n + sigc(ord(ch) - ord("0"))
+          if h < maxM then
+            n := h
+            inc(j)
+          end
+          Read(S, @ch)
+        end
+        if ch = "E" then // scale factor
+          s := 0
+          Read(S, @ch)
+          if ch = "-" then
+            negE := true
+            Read(S, @ch)
+          else
+            negE := false
+            if ch = "+" then
+              Read(S, @ch)
+            end
+          end
+          while ("0" <= ch) & (ch <= "9") do
+            s := s * 10 + sigc(ord(ch)) - 48
+            Read(S, @ch)
+          end
+          if negE then
+            dec(e, s)
+          else
+            inc(e, s)
+          end
+        end
+        x := flt(n)
+        dec(e, j)
+        if e < 0 then
+          if e >= -maxExp then
+            x := x / Ten(-e)
+          else
+            x := 0.0
+          end
+        elsif e > 0 then
+          if e <= maxExp then
+            x := Ten(e) * x
+          else
+            x := 0.0
+          end
+        end
+        if neg then
+          S.x := -x
+        else
+          S.x := x
+        end
+        if hex then
+          S.class := 0
+        else
+          S.class := Real
+        end
+      else // decimal integer
+        if neg then
+          S.i := -n
+        else
+          S.i := n
+        end
+        if hex then
+          S.class := Inval
+        else
+          S.class := Int
+        end
+      end
+    else // spectal character
+      S.class := Char
+      if neg then
+        S.c := "-"
+      else
+        S.c := ch
+        Read(S, @ch)
+      end
+    end
+  end
+  S.nextCh := ch
+end Scan
+
+// --------------- Access: Writers (NW) ------------------
+
+procedure OpenWriter*(W: ^Writer)
+begin
+  newgc(W.buf)
+  OpenBuf(W.buf)
+  W.fnt := Fonts.Default
+  W.col := 15
+  W.voff := 0
+  Files.Set(@W.rider, Files.New(""), 0)
+end OpenWriter
+
+procedure SetFont*(W: ^Writer; fnt: Fonts.Font)
+begin
+  W.fnt := fnt
+end SetFont
+
+procedure SetColor*(W: ^Writer; col: int32)
+begin
+  W.col := col
+end SetColor
+
+procedure SetOffset*(W: ^Writer; voff: int32)
+begin
+  W.voff := voff
+end SetOffset
+
+procedure Write*(W: ^Writer; ch: char)
+  var p: Piece
+begin
+  if (W.buf.last.fnt # W.fnt) or (W.buf.last.col # W.col) or (W.buf.last.voff # W.voff) then
+    newgc(p)
+    p.f := Files.Base(@W.rider)
+    p.off := Files.Pos(@W.rider)
+    p.len_ := 0
+    p.fnt := W.fnt
+    p.col := W.col
+    p.voff := W.voff
+    p.next := nil
+    W.buf.last.next := p
+    p.prev := W.buf.last
+    W.buf.last := p
+  end
+  Files.Write(@W.rider, ch)
+  inc(W.buf.last.len_)
+  inc(W.buf.len_)
+end Write
+
+procedure WriteLn*(W: ^Writer)
+begin
+  Write(W, CR)
+end WriteLn
+
+procedure WriteString*(W: ^Writer; const s: pointer to array of char)
+  var i: int32
+begin
+  i := 0
+  while s[i] >= " " do
+    Write(W, s[i])
+    inc(i)
+  end
+end WriteString
+
+procedure digit(d: int32): char inline
+  // the character of a decimal or hexadecimal digit
+begin
+  if d < 10 then
+    return chr(d + 30H)
+  else
+    return chr(d + 37H)
+  end
+end digit
+
+procedure WriteInt*(W: ^Writer; x, n: int32)
+  var i, x0: int32
+    a: array 10 of char
+begin
+  if usig(x) = 80000000H then // the one value which cannot be negated
+    WriteString(W, " -2147483648")
+  else
+    i := 0
+    if x < 0 then
+      dec(n)
+      x0 := -x
+    else
+      x0 := x
+    end
+    repeat
+      a[i] := digit(x0 mod 10)
+      x0 := x0 div 10
+      inc(i)
+    until x0 = 0
+    while n > i do
+      Write(W, " ")
+      dec(n)
+    end
+    if x < 0 then
+      Write(W, "-")
+    end
+    repeat
+      dec(i)
+      Write(W, a[i])
+    until i = 0
+  end
+end WriteInt
+
+procedure WriteHex*(W: ^Writer; x: int32)
+  // the eight hexadecimal digits of x; unsigned, so that a negative x shows its
+  // two's complement representation, where Oberon relies on floored DIV and MOD
+  var i: int32
+    u: uint32
+    a: array 10 of char
+begin
+  i := 0
+  u := usig(x)
+  Write(W, " ")
+  repeat
+    a[i] := digit(sigc(band(u, 0FH)))
+    u := shr(u, 4)
+    inc(i)
+  until i = 8
+  repeat
+    dec(i)
+    Write(W, a[i])
+  until i = 0
+end WriteHex
+
+procedure WriteReal*(W: ^Writer; x: real; n: int32)
+  var e, i, m: int32
+    d: array 16 of char
+begin
+  e := band(asr(cast(int32, x), 23), 255) // binary exponent; band, since the sign bit shifts in for x < 0
+  if e = 0 then
+    WriteString(W, "  0 ")
+    while n >= 3 do
+      Write(W, " ")
+      dec(n)
+    end
+  elsif e = 255 then
+    WriteString(W, " NaN ")
+  else
+    Write(W, " ")
+    while n >= 15 do
+      dec(n)
+      Write(W, " ")
+    end
+    // 2 < n < 9 digits to be written
+    if x < 0.0 then
+      Write(W, "-")
+      x := -x
+    else
+      Write(W, " ")
+    end
+    e := (e - 127) * 77 div 256 - 6 // decimal exponent
+    if e >= 0 then
+      x := x / Ten(e)
+    else
+      x := Ten(-e) * x
+    end
+    m := floor(x + 0.5)
+    i := 0
+    if m >= 10000000 then
+      inc(e)
+      m := m div 10
+    end
+    repeat
+      d[i] := digit(m mod 10)
+      m := m div 10
+      inc(i)
+    until m = 0
+    dec(i)
+    Write(W, d[i])
+    Write(W, ".")
+    if i < n - 7 then
+      n := 0
+    else
+      n := 14 - n
+    end
+    while i > n do
+      dec(i)
+      Write(W, d[i])
+    end
+    Write(W, "E")
+    inc(e, 6)
+    if e < 0 then
+      Write(W, "-")
+      e := -e
+    else
+      Write(W, "+")
+    end
+    Write(W, digit(e div 10))
+    Write(W, digit(e mod 10))
+  end
+end WriteReal
+
+procedure WriteRealFix*(W: ^Writer; x: real; n, k: int32)
+  var i, m: int32
+    neg: boolean
+    d: array 12 of char
+begin
+  if x = 0.0 then
+    WriteString(W, "  0")
+  else
+    if x < 0.0 then
+      x := -x
+      neg := true
+    else
+      neg := false
+    end
+    if k > 7 then
+      k := 7
+    end
+    x := Ten(k) * x
+    m := floor(x + 0.5)
+    i := 0
+    repeat
+      d[i] := digit(m mod 10)
+      m := m div 10
+      inc(i)
+    until m = 0
+    Write(W, " ")
+    while n > i + 3 do
+      Write(W, " ")
+      dec(n)
+    end
+    if neg then
+      Write(W, "-")
+      dec(n)
+    else
+      Write(W, " ")
+    end
+    while i > k do
+      dec(i)
+      Write(W, d[i])
+    end
+    Write(W, ".")
+    while k > i do
+      dec(k)
+      Write(W, "0")
+    end
+    while i > 0 do
+      dec(i)
+      Write(W, d[i])
+    end
+  end
+end WriteRealFix
+
+procedure WritePair(W: ^Writer; ch: char; x: int32)
+begin
+  Write(W, ch)
+  Write(W, digit(x div 10))
+  Write(W, digit(x mod 10))
+end WritePair
+
+procedure WriteClock*(W: ^Writer; d: int32)
+begin
+  WritePair(W, " ", d div 131072 mod 32) // day
+  WritePair(W, ".", d div 4194304 mod 16) // month
+  WritePair(W, ".", d div 67108864 mod 64) // year
+  WritePair(W, " ", d div 4096 mod 32) // hour
+  WritePair(W, ":", d div 64 mod 64) // min
+  WritePair(W, ":", d mod 64) // sec
+end WriteClock
+
+begin
+  TrailerFile := Files.New("")
+end Texts.

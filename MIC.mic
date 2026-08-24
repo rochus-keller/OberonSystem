@@ -1,0 +1,347 @@
+module MIC [level=1] // RK 2026
+// Freestanding implementation of the operations the Micron compiler expects from
+// its runtime MIC$, for the RISC-5 like RV32 machine of the Project Oberon System.
+// MIC+.mil forwards the calls of the generated code to this module.
+// WARNING: don't add anything here which depends on MIC$ to avoid a circular dependency!
+
+const 
+  rs232data* = 0FFFFFFC8H // the RS232 data register of the machine
+  EQ = 1                 // the relations as passed by the generated code
+  NEQ = 2
+  LT = 3
+  LEQ = 4
+  GT = 5
+  GEQ = 6
+
+type 
+  CharArray* = array of char
+  String* = pointer to CharArray
+  CharPtr* = pointer to char
+  AnyPtr* = pointer to byte
+  WordPtr = pointer to uint32
+
+  Allocator* = procedure(size: int32): AnyPtr
+
+var 
+  newSys: Allocator  // the heap owner installs these, see Install
+  newGc: Allocator
+
+procedure Install*(new: Allocator; gc: Allocator)
+begin
+  newSys := new
+  newGc := gc
+end Install
+
+procedure Char*(c: char)
+  // the console of the machine is its RS232 interface
+begin
+  WordPtr{rs232data}^ := ord(c)
+end Char
+
+procedure Str*(const s: String)
+  var i: int32
+begin
+  if s = nil then return end
+  i := 0
+  while ord(s[i]) # 0 do
+    Char(s[i])
+    inc(i)
+  end
+end Str
+
+procedure compare(const l: String; const r: String): int32
+  // the sign of the difference of the first two characters which differ
+  var i: int32
+begin
+  i := 0
+  while (ord(l[i]) # 0) & (ord(l[i]) = ord(r[i])) do
+    inc(i)
+  end
+  if ord(l[i]) < ord(r[i]) then return -1
+  elsif ord(l[i]) > ord(r[i]) then return 1
+  else return 0 end
+end compare
+
+procedure relate(d: int32; op: int32): uint32
+begin
+  case op of
+    | EQ: 
+      return ord(d = 0)
+    | NEQ: 
+      return ord(d # 0)
+    | LT: 
+      return ord(d < 0)
+    | LEQ: 
+      return ord(d <= 0)
+    | GT: 
+      return ord(d > 0)
+    | GEQ: 
+      return ord(d >= 0)
+  else return 0 end
+end relate
+
+procedure relop1*(const l: String; const r: String; op: int32): uint32
+begin
+  if (l = nil) or (r = nil) then return 0 end
+  return relate(compare(l, r), op)
+end relop1
+
+procedure relop2*(const l: String; r: char; op: int32): uint32
+  var s: array 2 of char
+begin
+  if l = nil then return 0 end
+  s[0] := r
+  s[1] := 0X
+  return relate(compare(l, @s), op)
+end relop2
+
+procedure relop3*(l: char; const r: String; op: int32): uint32
+  var s: array 2 of char
+begin
+  if r = nil then return 0 end
+  s[0] := l
+  s[1] := 0X
+  return relate(compare(@s, r), op)
+end relop3
+
+procedure relop4*(l: char; r: char; op: int32): uint32
+begin
+  return relate(+ord(l) - sigl(ord(r)), op) 
+end relop4
+
+procedure SetDiv*(l: uint32; r: uint32): uint32
+  // the symmetric difference of two sets
+begin
+  return band(bnot(band(l, r)), bor(l, r))
+end SetDiv
+
+procedure SetIn*(l: uint32; r: uint32): uint32
+begin
+  return ord(band(shl(1H, l), r) # 0)
+end SetIn
+
+procedure SetRange*(l, r: uint32): uint32
+  // all the bits from l to r, in either order
+  var i, res, lo, hi: uint32
+begin
+  if l <= r then lo := l; hi := r else lo := r; hi := l end
+  res := 0
+  i := lo
+  while i <= hi do
+    res := bor(res, shl(1H, i))
+    inc(i)
+  end
+  return res
+end SetRange
+
+procedure digit(d: uint32): char
+  // the character of a hexadecimal digit
+begin
+  if d < 0AH then return chr(30H + d) // '0' + d
+  else return chr(37H + d) end       // 'A' + d - 10
+end digit
+
+procedure Int*(i: int32)
+  // a decimal number, the digits of which are generated in reverse order
+  var buf: array 16 of char
+      n: int32
+      x: uint32
+begin
+  if i < 0 then Char('-'); x := usig(-i) else x := usig(i) end
+  n := 0
+  repeat
+    buf[n] := digit(x mod 10)
+    x := x div 10
+    inc(n)
+  until x = 0
+  while n > 0 do
+    dec(n)
+    Char(buf[n])
+  end
+end Int
+
+procedure Card*(x0: uint32)
+  // an unsigned decimal number
+  var buf: array 16 of char
+      n: int32
+      x: uint32
+begin
+  x := x0
+  n := 0
+  repeat
+    buf[n] := digit(x mod 10)
+    x := x div 10
+    inc(n)
+  until x = 0
+  while n > 0 do
+    dec(n)
+    Char(buf[n])
+  end
+end Card
+
+procedure Hex*(x: uint32; digits: int32)
+  var i: int32
+      d: uint32
+begin
+  i := digits
+  while i > 0 do
+    dec(i)
+    Char(digit(band(shr(x, usig(i)*4), 0FH)))
+  end
+end Hex
+
+procedure printI8*(i: int64)
+  // the machine is a 32 bit machine and has no 64 bit division
+begin
+  if (i > 07FFFFFFFH) or (i < -cast(int32,080000000HU)) then Str("<big>")
+  else Int(val(int32, i)) end
+end printI8
+
+procedure printU8*(u: uint64)
+begin
+  if u > usig(0FFFFFFFFH) then Str("<big>") else Card(val(uint32, u)) end
+end printU8
+
+procedure printF8*(f: flt64)
+  // the machine has no need for formatted floating point output so far
+begin
+  Str("<real>")
+end printF8
+
+procedure printStr*(const s: String)
+begin
+  Str(s)
+end printStr
+
+procedure printCh*(c: char)
+begin
+  Char(c)
+end printCh
+
+procedure printBool*(b: uint8)
+begin
+  if b # 0 then Str("true") else Str("false") end
+end printBool
+
+procedure printSet*(s: uint32)
+begin
+  Hex(s, 8)
+end printSet
+
+procedure Halt*(res: int32)
+  // there is no operating system to return to, so just stop the processor
+begin
+  Str("halted with ")
+  Int(res)
+  Char(0AX)
+  loop end
+end Halt
+
+procedure assert*(cond: uint8; line: uint32; const file: String)
+begin
+  if cond = 0 then
+    Str("assertion failed in ")
+    Str(file)
+    Str(" line ")
+    Card(line)
+    Char(0AX)
+    Halt(1)
+  end
+end assert
+
+procedure strlen*(str: CharPtr): uint32
+  var n: uint32
+      p: CharPtr
+begin
+  if str = nil then return 0 end
+  n := 0
+  p := str
+  while ord(p^) # 0 do
+    inc(p, 1)
+    inc(n)
+  end
+  return n
+end strlen
+
+procedure strcpy*(dst: CharPtr; src: CharPtr; n: int32)
+  // n is the size of the destination, the result is always terminated
+  var i: int32
+      s, d: CharPtr
+begin
+  if (dst = nil) or (src = nil) or (n <= 0) then return end
+  s := src
+  d := dst
+  i := 0
+  while (i < n - 1) & (ord(s^) # 0) do
+    d^ := s^
+    inc(s, 1)
+    inc(d, 1)
+    inc(i)
+  end
+  d^ := 0X
+end strcpy
+
+procedure clear(p: AnyPtr; size: uint32)
+  // the generated code expects a cleared block
+  var q: WordPtr
+      i: uint32
+begin
+  q := cast(WordPtr, p)
+  i := 0
+  while i < (size + 3) div 4 do
+    q^ := 0
+    inc(q, 1)
+    inc(i)
+  end
+end clear
+
+procedure Alloc*(size: uint32): AnyPtr
+  // NEW and SYSTEM.NEW ask for a block which lives as long as the system
+  var p: AnyPtr
+begin
+  if newSys = nil then
+    Str("no allocator installed")
+    Char(0AX)
+    Halt(2)
+  end
+  p := newSys(sigc(size))
+  if p = nil then
+    Str("heap exhausted")
+    Char(0AX)
+    Halt(3)
+  end
+  return p
+end Alloc
+
+procedure Zero*(size: uint32): AnyPtr
+  // the same, but the block is cleared
+  var p: AnyPtr
+begin
+  p := Alloc(size)
+  clear(p, size)
+  return p
+end Zero
+
+procedure GcAlloc*(size: uint32): AnyPtr
+  // NEWGC asks for a block which the collector of the heap owner may reclaim
+  var p: AnyPtr
+begin
+  if newGc = nil then
+    return Zero(size) // no collector: the block simply lives on
+  end
+  p := newGc(sigc(size))
+  if p = nil then
+    Str("heap exhausted")
+    Char(0AX)
+    Halt(3)
+  end
+  clear(p, size)
+  return p
+end GcAlloc
+
+procedure Free*(p: AnyPtr)
+  // the heap of the Oberon System is reclaimed by its garbage collector
+begin
+end Free
+
+end MIC

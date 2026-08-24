@@ -1,0 +1,166 @@
+module Hilbert [level=5] // NW 8.1.2013  for RISC / RK 2026
+
+import Display, Viewers, Texts, Oberon, MenuViewers, TextFrames
+
+const
+  Menu = "System.Close  System.Copy  System.Grow"
+
+var
+  x: int32
+  y: int32
+  d: int32
+  A: procedure(i: int32)
+  B: procedure(i: int32)
+  C: procedure(i: int32)
+  D: procedure(i: int32)
+
+procedure E()
+begin
+  Display.ReplConst(Display.white, x, y, d, 1, Display.paint)
+  inc(x, d)
+end E
+
+procedure N()
+begin
+  Display.ReplConst(Display.white, x, y, 1, d, Display.paint)
+  inc(y, d)
+end N
+
+procedure W()
+begin
+  dec(x, d)
+  Display.ReplConst(Display.white, x, y, d, 1, Display.paint)
+end W
+
+procedure S()
+begin
+  dec(y, d)
+  Display.ReplConst(Display.white, x, y, 1, d, Display.paint)
+end S
+
+procedure HA(i: int32)
+begin
+  if i > 0 then
+    D(i - 1)
+    W()
+    A(i - 1)
+    S()
+    A(i - 1)
+    E()
+    B(i - 1)
+  end
+end HA
+
+procedure HB(i: int32)
+begin
+  if i > 0 then
+    C(i - 1)
+    N()
+    B(i - 1)
+    E()
+    B(i - 1)
+    S()
+    A(i - 1)
+  end
+end HB
+
+procedure HC(i: int32)
+begin
+  if i > 0 then
+    B(i - 1)
+    E()
+    C(i - 1)
+    N()
+    C(i - 1)
+    W()
+    D(i - 1)
+  end
+end HC
+
+procedure HD(i: int32)
+begin
+  if i > 0 then
+    A(i - 1)
+    S()
+    D(i - 1)
+    W()
+    D(i - 1)
+    N()
+    C(i - 1)
+  end
+end HD
+
+procedure DrawHilbert(F: Display.Frame)
+  var k, n, w, x0, y0: int32
+begin
+  k := 0
+  d := 8
+  if F.W < F.H then
+    w := F.W
+  else
+    w := F.H
+  end
+  while d * 2 < w do
+    d := d * 2
+    inc(k)
+  end
+  Display.ReplConst(Display.black, F.X, F.Y, F.W, F.H, Display.replace)
+  x0 := F.W div 2
+  y0 := F.H div 2
+  n := 0
+  while n < k do
+    d := d div 2
+    inc(x0, d div 2)
+    inc(y0, d div 2)
+    x := F.X + x0
+    y := F.Y + y0
+    inc(n)
+    HA(n)
+  end
+end DrawHilbert
+
+procedure Handler(F: Display.Frame; M: ^Display.FrameMsg)
+  var F0: Display.Frame
+begin
+  case M of
+  | Oberon.PInputMsg:
+    if M.id = Oberon.track then
+      Oberon.DrawMouseArrow(M.X, M.Y)
+    end
+  | MenuViewers.PModifyMsg:
+    F.Y := M.Y
+    F.H := M.H
+    DrawHilbert(F)
+  | Oberon.PControlMsg:
+    if M.id = Oberon.neutralize then
+      Oberon.RemoveMarks(F.X, F.Y, F.W, F.H)
+    end
+  | Oberon.PCopyMsg:
+    newgc(F0)
+    F0^ := F^
+    M.F := F0
+  end
+end Handler
+
+procedure New(): Display.Frame
+  var F: Display.Frame
+begin
+  newgc(F)
+  F.handle := Handler
+  return F
+end New
+
+procedure Draw*()
+  var V: Viewers.Viewer
+    X, Y: int32
+begin
+  Oberon.AllocateUserViewer(Oberon.Par.vwr.X, @X, @Y)
+  V := MenuViewers.New(TextFrames.NewMenu("Hilbert", Menu), New(), TextFrames.menuH, X, Y)
+end Draw
+
+begin
+  A := HA
+  B := HB
+  C := HC
+  D := HD
+end Hilbert.

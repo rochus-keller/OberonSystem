@@ -1,0 +1,1217 @@
+module Hennessy [level=5] // RK 2026
+(*  This is a suite of benchmarks that are relatively short, both in program
+size and execution time.  It requires no input, and prints the execution
+time for each program, using the system- dependent routine Getclock,
+below, to find out the current CPU time.  It does a rudimentary check to
+make sure each program gets the right output.  These programs were
+gathered by John Hennessy and modified by Peter Nye.
+Oberon: J.Templ 26.2.90
+native Oberon: pm 09.12.95
+native Oberon OP2: pm 12.02.96
+2019-10-06 fixes by Rochus for Oberon-07 compatibility
+*)
+
+import Oberon, Texts
+
+const
+  bubblebase = 1.61
+  dnfbase = 3.5
+  permbase = 1.75
+  queensbase = 1.83
+  towersbase = 2.39
+  quickbase = 1.92
+  intmmbase = 1.46
+  treebase = 2.5
+  mmbase = 0.0 // 0.73
+  fpmmbase = 2.92
+  puzzlebase = 0.5
+  fftbase = 0.0 // 1.11
+  fpfftbase = 4.44
+
+  // Towers
+  maxcells = 18
+  stackrange = 3 // 0..
+
+  // Intmm, Mm
+  rowsize = 40
+
+  // Puzzle
+  size_ = 511
+  classmax = 3
+  typemax = 12
+  d = 8i1
+
+  // Bubble, Quick
+  sortelements = 5000
+  srtelements = 500
+
+  // fft
+  fftsize = 256
+  fftsize2 = 129
+
+  // Perm
+  permrange = 10 // 0 ..
+// Towers
+
+// tree
+
+type
+  node = pointer to nodeDesc
+  nodeDesc = record
+    left: node
+    right: node
+    val_: int32
+  end
+
+  (* Towers
+  discsizrange = 1..maxcells;
+  cellcursor = 0..maxcells; *)
+  element = record
+    discsize: int32
+    next: int32
+  end
+
+  (*    emsgtype = packed array[1..15] of char;
+  *)
+  // Intmm, Mm
+  (*
+  index = 1 .. rowsize; *)
+  intmatrix = array rowsize + 1 of array rowsize + 1 of int32
+  realmatrix = array rowsize + 1 of array rowsize + 1 of real
+
+  // Puzzle
+  (*
+  piececlass = 0..classmax;
+  piecetype = 0..typemax;
+  position = 0..size;
+  *)
+  // Bubble, Quick
+  (*
+  listsize = 0..sortelements;
+  sortarray = array [listsize] of integer;
+  *)
+  // FFT
+  complex = record
+    rp: real
+    ip: real
+  end
+
+  carray = array fftsize + 1 of complex
+  c2array = array fftsize2 + 1 of complex
+
+  Proc = procedure()
+
+var
+  fixed: real
+  floated: real
+
+  // global
+  seed: int32
+
+  // Perm
+  permarray: array permrange + 1 of int32
+  pctr: int32
+
+  // tree
+  tree: node
+
+  // Towers
+  stack: array stackrange + 1 of int32
+  cellspace: array maxcells + 1 of element
+  freelist: int32
+  movesdone: int32
+
+  // Intmm, Mm
+  ima: intmatrix // Nun lokal definiert PM 24.09.94
+  imb: intmatrix
+  imr: intmatrix
+  rma: realmatrix
+  rmb: realmatrix
+  rmr: realmatrix
+
+  // Puzzle
+  piececount: array classmax + 1 of int32
+  class: array typemax + 1 of int32
+  piecemax: array typemax + 1 of int32
+  puzzl: array size_ + 1 of boolean
+  p: array typemax + 1 of array size_ + 1 of boolean
+  n: int32
+  kount: int32
+
+  // Bubble, Quick
+  sortlist: array sortelements + 1 of int32
+  biggest: int32
+  littlest: int32
+  top: int32
+
+  // FFT
+  z: carray
+  w: carray
+  e: c2array
+  zr: real
+  zi: real
+
+  W: Texts.Writer
+
+// global procedures
+
+procedure Str*(const s: pointer to array of char)
+  var i: int32
+begin
+  i := 0
+  while s[i] # 0X do
+    if s[i] = "$" then
+      Texts.WriteLn(@W)
+    else
+      Texts.Write(@W, s[i])
+    end
+    inc(i)
+  end
+  Texts.Append(Oberon.Log, W.buf)
+end Str
+
+procedure Getclock(): int32
+begin
+  return Oberon.Time()
+end Getclock
+
+procedure Initrand()
+begin
+  seed := 74755
+end Initrand
+
+procedure Rand(): int32
+begin
+  seed := (seed * 1309 + 13849) mod 65535
+  return seed
+end Rand
+
+// Permutation program, heavily recursive, written by Denny Brown.
+
+procedure Swap(a, b: ^int32)
+  var t: int32
+begin
+  t := a^
+  a^ := b^
+  b^ := t
+end Swap
+
+procedure Initialize()
+  var i: int32
+begin
+  i := 1
+  while i <= 7 do
+    permarray[i] := i - 1
+    inc(i)
+  end
+end Initialize
+
+procedure Permute(n: int32)
+  var k: int32
+begin
+  pctr := pctr + 1
+  if n # 1 then
+    Permute(n - 1)
+    k := n - 1
+    while k >= 1 do
+      Swap(@permarray[n], @permarray[k])
+      Permute(n - 1)
+      Swap(@permarray[n], @permarray[k])
+      dec(k)
+    end
+  end
+end Permute
+
+procedure Perm*()
+  var i: int32
+begin
+  pctr := 0
+  i := 1
+  while i <= 5 do
+    Initialize()
+    Permute(7)
+    inc(i)
+  end
+  if pctr # 43300 then
+    Str(" Error in Perm.$")
+  end
+end Perm
+
+// Program to Solve the Towers of Hanoi
+
+procedure Makenull(s: int32)
+begin
+  stack[s] := 0
+end Makenull
+
+procedure Getelement(): int32
+  var temp: int32
+begin
+  if freelist > 0 then
+    temp := freelist
+    freelist := cellspace[freelist].next
+  else
+    Str("out of space   $")
+  end
+  return temp
+end Getelement
+
+procedure Push(i, s: int32)
+  var localel: int32
+    errorfound: boolean
+begin
+  errorfound := false
+  if stack[s] > 0 then
+    if cellspace[stack[s]].discsize <= i then
+      errorfound := true
+      Str("disc size error$")
+    end
+  end
+  if ~errorfound then
+    localel := Getelement()
+    cellspace[localel].next := stack[s]
+    stack[s] := localel
+    cellspace[localel].discsize := i
+  end
+end Push
+
+procedure Init(s, n: int32)
+  var discctr: int32
+begin
+  Makenull(s)
+  discctr := n
+  while discctr >= 1 do
+    Push(discctr, s)
+    dec(discctr)
+  end
+end Init
+
+procedure Pop(s: int32): int32
+  var temp, temp1: int32
+begin
+  temp1 := 0
+  if stack[s] > 0 then
+    temp1 := cellspace[stack[s]].discsize
+    temp := cellspace[stack[s]].next
+    cellspace[stack[s]].next := freelist
+    freelist := stack[s]
+    stack[s] := temp
+  else
+    Str("nothing to pop $")
+  end
+  return temp1
+end Pop
+
+procedure Move(s1, s2: int32)
+begin
+  Push(Pop(s1), s2)
+  movesdone := movesdone + 1
+end Move
+
+procedure tower(i, j, k: int32)
+  var other: int32
+begin
+  if k = 1 then
+    Move(i, j)
+  else
+    other := 6 - i - j
+    tower(i, other, k - 1)
+    Move(i, j)
+    tower(other, j, k - 1)
+  end
+end tower
+
+procedure Towers*()
+  var i: int32
+begin
+  i := 1
+  while i <= maxcells do
+    cellspace[i].next := i - 1
+    inc(i)
+  end
+  freelist := maxcells
+  Init(1, 14)
+  Makenull(2)
+  Makenull(3)
+  movesdone := 0
+  tower(1, 2, 14)
+  if movesdone # 16383 then
+    Str(" Error in Towers.$")
+  end
+end Towers
+
+// The eight queens problem, solved 50 times.
+(*
+type
+doubleboard =   2..16;
+doublenorm  =   -7..7;
+boardrange  =   1..8;
+aarray      =   array [boardrange] of boolean;
+barray      =   array [doubleboard] of boolean;
+carray      =   array [doublenorm] of boolean;
+xarray      =   array [boardrange] of boardrange;
+*)
+
+procedure Try(i: int32; q: ^boolean; a, b, c: pointer to array of boolean; x: pointer to array of int32)
+  var j: int32
+begin
+  j := 0
+  q^ := false
+  while ~q^ & (j # 8) do
+    j := j + 1
+    q^ := false
+    if b[j] & a[i + j] & c[i - j + 7] then
+      x[i] := j
+      b[j] := false
+      a[i + j] := false
+      c[i - j + 7] := false
+      if i < 8 then
+        Try(i + 1, q, a, b, c, x)
+        if ~q^ then
+          b[j] := true
+          a[i + j] := true
+          c[i - j + 7] := true
+        end
+      else
+        q^ := true
+      end
+    end
+  end
+end Try
+
+procedure Doit()
+  var i: int32
+    q: boolean
+    a: array 9 of boolean
+    b: array 17 of boolean
+    c: array 15 of boolean
+    x: array 9 of int32
+begin
+  i := -7
+  while i <= 16 do
+    if (i >= 1) & (i <= 8) then
+      a[i] := true
+    end
+    if i >= 2 then
+      b[i] := true
+    end
+    if i <= 7 then
+      c[i + 7] := true
+    end
+    i := i + 1
+  end
+  Try(1, @q, @b, @a, @c, @x)
+  if ~q then
+    Str(" Error in Queens.$")
+  end
+end Doit
+
+procedure Queens*()
+  var i: int32
+begin
+  i := 1
+  while i <= 50 do
+    Doit()
+    inc(i)
+  end
+end Queens
+
+// Multiplies two integer matrices.
+
+procedure Initmatrix(m: ^intmatrix)
+  var temp, i, j: int32
+begin
+  i := 1
+  while i <= rowsize do
+    j := 1
+    while j <= rowsize do
+      temp := Rand()
+      m[i][j] := temp - temp div 120 * 120 - 60
+      inc(j)
+    end
+    inc(i)
+  end
+end Initmatrix
+
+procedure Innerproduct(result: ^int32; a, b: ^intmatrix; row, column: int32)
+  var i: int32
+begin
+  // computes the inner product of A[row,*] and B[*,column]
+  result^ := 0
+  i := 1
+  while i <= rowsize do
+    result^ := result^ + a[row][i] * b[i][column]
+    inc(i)
+  end
+end Innerproduct
+
+procedure Intmm*()
+  var i: int32 // ima, imb, imr: intmatrix;
+    j: int32
+begin
+  Initrand()
+  Initmatrix(@ima)
+  Initmatrix(@imb)
+  i := 1
+  while i <= rowsize do
+    j := 1
+    while j <= rowsize do
+      Innerproduct(@imr[i][j], @ima, @imb, i, j)
+      inc(j)
+    end
+    inc(i)
+  end
+end Intmm
+
+// Multiplies two real matrices.
+
+procedure rInitmatrix(m: ^realmatrix)
+  var temp, i, j: int32
+begin
+  i := 1
+  while i <= rowsize do
+    j := 1
+    while j <= rowsize do
+      temp := Rand()
+      m[i][j] := flt((temp - temp div 120 * 120 - 60) div 3)
+      inc(j)
+    end
+    inc(i)
+  end
+end rInitmatrix
+
+procedure rInnerproduct(result: ^real; a, b: ^realmatrix; row, column: int32)
+  // computes the inner product of A[row,*] and B[*,column]
+  var i: int32
+begin
+  result^ := 0.0
+  i := 1
+  while i <= rowsize do
+    result^ := result^ + a[row][i] * b[i][column]
+    inc(i)
+  end
+end rInnerproduct
+
+procedure Mm*()
+  var i: int32 // rma, rmb, rmr: realmatrix;
+    j: int32
+begin
+  Initrand()
+  rInitmatrix(@rma)
+  rInitmatrix(@rmb)
+  i := 1
+  while i <= rowsize do
+    j := 1
+    while j <= rowsize do
+      rInnerproduct(@rmr[i][j], @rma, @rmb, i, j)
+      inc(j)
+    end
+    inc(i)
+  end
+end Mm
+
+// A compute-bound program from Forest Baskett.
+
+procedure Fit(i, j: int32): boolean
+  var k: int32
+    res: boolean
+begin
+  k := 0
+  res := true
+  while (k <= piecemax[i]) & res do
+    if p[i][k] then
+      if puzzl[j + k] then
+        res := false
+      end
+    end
+    inc(k)
+  end
+  return res
+end Fit
+
+procedure Place(i, j: int32): int32
+  var k: int32
+    ok: boolean
+begin
+  k := 0
+  while k <= piecemax[i] do
+    if p[i][k] then
+      puzzl[j + k] := true
+    end
+    inc(k)
+  end
+  piececount[class[i]] := piececount[class[i]] - 1
+  k := j
+  ok := false (* Place returns the first free cell, 0 if the puzzle is full;
+  the variant without the second RETURN had the two cases exchanged *)
+  while (k <= size_) & ~ok do
+    if ~puzzl[k] then
+      ok := true
+    else
+      inc(k)
+    end
+  end
+  if ~ok then
+    k := 0
+  end
+  return k
+end Place
+
+procedure Remove(i, j: int32)
+  var k: int32
+begin
+  k := 0
+  while k <= piecemax[i] do
+    if p[i][k] then
+      puzzl[j + k] := false
+    end
+    inc(k)
+  end
+  piececount[class[i]] := piececount[class[i]] + 1
+end Remove
+
+procedure Trial(j: int32): boolean
+  var i, k: int32
+    res: boolean
+begin
+  i := 0
+  kount := kount + 1
+  res := false
+  while (i <= typemax) & ~res do
+    if piececount[class[i]] # 0 then
+      if Fit(i, j) then
+        k := Place(i, j)
+        if Trial(k) or (k = 0) then
+          res := true
+        else
+          Remove(i, j)
+        end
+      end
+    end
+    inc(i)
+  end
+  return res
+end Trial
+
+procedure Puzzle*()
+  var i, j, k, m: int32
+begin
+  m := 0
+  while m <= size_ do
+    puzzl[m] := true
+    inc(m)
+  end
+  i := 1
+  while i <= 5 do
+    j := 1
+    while j <= 5 do
+      k := 1
+      while k <= 5 do
+        puzzl[i + d * (j + d * k)] := false
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  i := 0
+  while i <= typemax do
+    m := 0
+    while m <= size_ do
+      p[i][m] := false
+      inc(m)
+    end
+    inc(i)
+  end
+  i := 0
+  while i <= 3 do
+    j := 0
+    while j <= 1 do
+      k := 0
+      while k <= 0 do
+        p[0][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[0] := 0
+  piecemax[0] := 3 + d * 1 + d * d * 0
+  i := 0
+  while i <= 1 do
+    j := 0
+    while j <= 0 do
+      k := 0
+      while k <= 3 do
+        p[1][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[1] := 0
+  piecemax[1] := 1 + d * 0 + d * d * 3
+  i := 0
+  while i <= 0 do
+    j := 0
+    while j <= 3 do
+      k := 0
+      while k <= 1 do
+        p[2][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[2] := 0
+  piecemax[2] := 0 + d * 3 + d * d * 1
+  i := 0
+  while i <= 1 do
+    j := 0
+    while j <= 3 do
+      k := 0
+      while k <= 0 do
+        p[3][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[3] := 0
+  piecemax[3] := 1 + d * 3 + d * d * 0
+  i := 0
+  while i <= 3 do
+    j := 0
+    while j <= 0 do
+      k := 0
+      while k <= 1 do
+        p[4][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[4] := 0
+  piecemax[4] := 3 + d * 0 + d * d * 1
+  i := 0
+  while i <= 0 do
+    j := 0
+    while j <= 1 do
+      k := 0
+      while k <= 3 do
+        p[5][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[5] := 0
+  piecemax[5] := 0 + d * 1 + d * d * 3
+  i := 0
+  while i <= 2 do
+    j := 0
+    while j <= 0 do
+      k := 0
+      while k <= 0 do
+        p[6][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[6] := 1
+  piecemax[6] := 2 + d * 0 + d * d * 0
+  i := 0
+  while i <= 0 do
+    j := 0
+    while j <= 2 do
+      k := 0
+      while k <= 0 do
+        p[7][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[7] := 1
+  piecemax[7] := 0 + d * 2 + d * d * 0
+  i := 0
+  while i <= 0 do
+    j := 0
+    while j <= 0 do
+      k := 0
+      while k <= 2 do
+        p[8][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[8] := 1
+  piecemax[8] := 0 + d * 0 + d * d * 2
+  i := 0
+  while i <= 1 do
+    j := 0
+    while j <= 1 do
+      k := 0
+      while k <= 0 do
+        p[9][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[9] := 2
+  piecemax[9] := 1 + d * 1 + d * d * 0
+  i := 0
+  while i <= 1 do
+    j := 0
+    while j <= 0 do
+      k := 0
+      while k <= 1 do
+        p[10][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[10] := 2
+  piecemax[10] := 1 + d * 0 + d * d * 1
+  i := 0
+  while i <= 0 do
+    j := 0
+    while j <= 1 do
+      k := 0
+      while k <= 1 do
+        p[11][i + d * (j + d * k)] := true
+        inc(k)
+      end
+
+      inc(j)
+    end
+
+    inc(i)
+  end
+  class[11] := 2
+  piecemax[11] := 0 + d * 1 + d * d * 1
+  i := 0
+  while i <= 1 do
+    j := 0
+    while j <= 1 do
+      k := 0
+      while k <= 1 do
+        p[12][i + d * (j + d * k)] := true
+        inc(k)
+      end
+      inc(j)
+    end
+    inc(i)
+  end
+  class[12] := 3
+  piecemax[12] := 1 + d * 1 + d * d * 1
+  piececount[0] := 13
+  piececount[1] := 3
+  piececount[2] := 1
+  piececount[3] := 1
+  m := 1 + d * (1 + d * 1)
+  kount := 0
+  if Fit(0, m) then
+    n := Place(0, m)
+  else
+    Str("Error1 in Puzzle$")
+  end
+  if ~Trial(n) then
+    Str("Error2 in Puzzle.$")
+  elsif kount # 2005 then
+    Str("Error3 in Puzzle.$")
+  end
+end Puzzle
+
+// Sorts an array using quicksort
+
+procedure Initarr()
+  var i, temp: int32
+begin
+  Initrand()
+  biggest := 0
+  littlest := 0
+  i := 1
+  while i <= sortelements do
+    temp := Rand()
+    sortlist[i] := temp - temp div 100000 * 100000 - 50000
+    if sortlist[i] > biggest then
+      biggest := sortlist[i]
+    elsif sortlist[i] < littlest then
+      littlest := sortlist[i]
+    end
+    inc(i)
+  end
+end Initarr
+
+procedure Quicksort(a: pointer to array of int32; l, r: int32)
+  // quicksort the array A from start to finish
+  var i, j, x, w: int32
+begin
+  i := l
+  j := r
+  x := a[(l + r) div 2]
+  repeat
+    while a[i] < x do
+      i := i + 1
+    end
+    while x < a[j] do
+      j := j - 1
+    end
+    if i <= j then
+      w := a[i]
+      a[i] := a[j]
+      a[j] := w
+      i := i + 1
+      j := j - 1
+    end
+  until i > j
+  if l < j then
+    Quicksort(a, l, j)
+  end
+  if i < r then
+    Quicksort(a, i, r)
+  end
+end Quicksort
+
+procedure Quick*()
+begin
+  Initarr()
+  Quicksort(@sortlist, 1, sortelements)
+  if (sortlist[1] # littlest) or (sortlist[sortelements] # biggest) then
+    Str(" Error in Quick.$")
+  end
+end Quick
+
+// Sorts an array using bubblesort
+
+procedure bInitarr()
+  var i, temp: int32
+begin
+  Initrand()
+  biggest := 0
+  littlest := 0
+  i := 1
+  while i <= srtelements do
+    temp := Rand()
+    sortlist[i] := temp - temp div 100000 * 100000 - 50000
+    if sortlist[i] > biggest then
+      biggest := sortlist[i]
+    elsif sortlist[i] < littlest then
+      littlest := sortlist[i]
+    end
+    inc(i)
+  end
+end bInitarr
+
+procedure Bubble*()
+  var i, j: int32
+begin
+  bInitarr()
+  top := srtelements
+  while top > 1 do
+    i := 1
+    while i < top do
+      if sortlist[i] > sortlist[i + 1] then
+        j := sortlist[i]
+        sortlist[i] := sortlist[i + 1]
+        sortlist[i + 1] := j
+      end
+      i := i + 1
+    end
+    top := top - 1
+  end
+  if (sortlist[1] # littlest) or (sortlist[srtelements] # biggest) then
+    Str("Error3 in Bubble.$")
+  end
+end Bubble
+
+// Sorts an array using treesort
+
+procedure tInitarr()
+  var i, temp: int32
+begin
+  Initrand()
+  biggest := 0
+  littlest := 0
+  i := 1
+  while i <= sortelements do
+    temp := Rand()
+    sortlist[i] := temp - temp div 100000 * 100000 - 50000
+    if sortlist[i] > biggest then
+      biggest := sortlist[i]
+    elsif sortlist[i] < littlest then
+      littlest := sortlist[i]
+    end
+    inc(i)
+  end
+end tInitarr
+
+procedure CreateNode(t: ^node; n: int32)
+begin
+  newgc(t^)
+  t^.left := nil
+  t^.right := nil
+  t^.val_ := n
+end CreateNode
+
+procedure Insert(n: int32; t: node)
+begin
+  // insert n into tree
+  if n > t.val_ then
+    if t.left = nil then
+      CreateNode(@t.left, n)
+    else
+      Insert(n, t.left)
+    end
+  elsif n < t.val_ then
+    if t.right = nil then
+      CreateNode(@t.right, n)
+    else
+      Insert(n, t.right)
+    end
+  end
+end Insert
+
+procedure Checktree(p: node): boolean
+  // check by inorder traversal
+  var result: boolean
+begin
+  result := true
+  if p.left # nil then
+    if p.left.val_ <= p.val_ then
+      result := false
+    else
+      result := Checktree(p.left) & result
+    end
+  end
+  if p.right # nil then
+    if p.right.val_ >= p.val_ then
+      result := false
+    else
+      result := Checktree(p.right) & result
+    end
+  end
+  return result
+end Checktree
+
+procedure Trees*()
+  var i: int32
+begin
+  tInitarr()
+  newgc(tree)
+  tree.left := nil
+  tree.right := nil
+  tree.val_ := sortlist[1]
+  i := 2
+  while i <= sortelements do
+    Insert(sortlist[i], tree)
+    inc(i)
+  end
+  if ~Checktree(tree) then
+    Str(" Error in Tree.$")
+  end
+end Trees
+
+procedure Cos(x: real): real
+  // computes cos of x (x in radians) by an expansion
+  var i, factor: int32
+    result, power: real
+begin
+  result := 1.0
+  factor := 1
+  power := x
+  i := 2
+  while i <= 10 do
+    factor := factor * i
+    power := power * x
+    if i mod 2 = 0 then
+      if i mod 4 = 0 then
+        result := result + power / flt(factor)
+      else
+        result := result - power / flt(factor)
+      end
+    end
+    inc(i)
+  end
+  return result
+end Cos
+
+procedure Min0(arg1, arg2: int32): int32
+  var res: int32
+begin
+  if arg1 < arg2 then
+    res := arg1
+  else
+    res := arg2
+  end
+  return res
+end Min0
+
+procedure Uniform11(iy: int32; yfl: real)
+begin
+  iy := (4855 * iy + 1731) mod 8192
+  yfl := flt(iy) / 8192.0
+end Uniform11
+
+procedure Exptab(n: int32; e: ^c2array)
+  var theta: real // d1 by pm 12.02.96
+    divisor, d3: real
+    h: array 26 of real
+    i, j, k, l, m, d1, d2: int32
+begin
+  theta := 3.141593
+  divisor := 4.0
+  i := 1
+  while i <= 25 do
+    h[i] := 1.0 / (2.0 * Cos(theta / divisor))
+    divisor := divisor + divisor
+    inc(i)
+  end
+  m := n div 2
+  l := m div 2
+  j := 1
+  e[1].rp := 1.0
+  e[1].ip := 0.0
+  e[l + 1].rp := 0.0
+  e[l + 1].ip := 1.0
+  e[m + 1].rp := -1.0
+  e[m + 1].ip := 0.0
+  repeat
+    i := l div 2
+    k := i
+    repeat
+      d1 := k + i + 1
+      d2 := k - i + 1
+      d3 := e[d2].rp
+      e[k + 1].rp := h[j] * (e[d1].rp + d3)
+      d3 := e[d2].ip
+      e[k + 1].ip := h[j] * (e[d1].ip + d3)
+      k := k + l
+    until k > m
+    j := Min0(j + 1, 25)
+    l := i
+  until l <= 1
+end Exptab
+
+procedure Fft(n: int32; z, w: ^carray; e: ^c2array; sqrinv: real)
+  var i: int32 // d1, d2 added pm 12.02.96
+    j, k, l, m, index: int32
+    h, d1, d2: real
+begin
+  m := n div 2
+  l := 1
+  repeat
+    k := 0
+    j := l
+    i := 1
+    repeat
+      repeat
+        w[i + k].rp := z[i].rp + z[m + i].rp
+        w[i + k].ip := z[i].ip + z[m + i].ip
+        h := e[k + 1].rp * (z[i].rp - z[i + m].rp)
+        d1 := z[i].ip - z[i + m].ip
+        w[i + j].rp := h - e[k + 1].ip * d1
+        h := e[k + 1].rp * (z[i].ip - z[i + m].ip)
+        d1 := z[i].rp - z[i + m].rp
+        w[i + j].ip := h + e[k + 1].ip * d1
+        i := i + 1
+      until i > j
+      k := j
+      j := k + l
+    until j > m
+    // z := w ;
+    index := 1
+    repeat
+      z[index] := w[index]
+      index := index + 1
+    until index > n
+    l := l + l
+  until l > m
+  i := 1
+  while i <= n do
+    z[i].rp := sqrinv * z[i].rp
+    z[i].ip := -(sqrinv * z[i].ip)
+    inc(i)
+  end
+end Fft
+
+procedure Oscar*()
+  var i: int32
+begin
+  Exptab(fftsize, @e)
+  seed := 5767
+  i := 1
+  while i <= fftsize do
+    Uniform11(seed, zr)
+    Uniform11(seed, zi)
+    z[i].rp := 20.0 * zr - 10.0
+    z[i].ip := 20.0 * zi - 10.0
+    inc(i)
+  end
+  i := 1
+  while i <= 20 do
+    Fft(fftsize, @z, @w, @e, 0.0625)
+    inc(i)
+  end
+end Oscar
+
+procedure Time(const s: pointer to array of char; p: Proc; base, fbase: real)
+  var timer, i: int32
+begin
+  Str(s)
+  i := 0
+  timer := Getclock()
+  while i < 10 do
+    p()
+    inc(i)
+  end
+  timer := Getclock() - timer
+  Texts.WriteInt(@W, timer, 8)
+  Texts.WriteLn(@W)
+  Texts.Append(Oberon.Log, W.buf)
+  fixed := fixed + flt(timer) * base
+  floated := floated + flt(timer) * fbase
+end Time
+
+procedure Do*()
+begin
+  fixed := 0.0
+  floated := 0.0
+  Time("Perm ", Perm, permbase, permbase)
+  Time("Towers ", Towers, towersbase, towersbase)
+  Time("Queens ", Queens, queensbase, queensbase)
+  Time("Intmm ", Intmm, intmmbase, intmmbase)
+  Time("Mm ", Mm, mmbase, fpmmbase)
+  Time("Puzzle ", Puzzle, puzzlebase, puzzlebase)
+  Time("Quick ", Quick, quickbase, quickbase)
+  Time("Bubble ", Bubble, bubblebase, bubblebase)
+  Time("Tree ", Trees, treebase, treebase)
+  Time("FFT ", Oscar, fftbase, fpfftbase)
+  Str("Nonfloating point composite is ")
+  Texts.WriteReal(@W, fixed, 10)
+  Texts.WriteLn(@W)
+  Str("Floating point composite is ")
+  Texts.WriteReal(@W, floated, 10)
+  Texts.WriteLn(@W)
+  Texts.Append(Oberon.Log, W.buf)
+end Do
+
+begin
+  Texts.OpenWriter(@W)
+end Hennessy.

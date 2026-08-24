@@ -1,0 +1,892 @@
+module GraphicFrames [level=5] // NW 18.4.88 / 18.11.2013 / 27.8.2018 / RK 2026
+
+import SYS, Display, Viewers, Input, Fonts, Texts, Graphics, Oberon, MenuViewers
+
+// update message ids
+
+const
+  drawobj = 1
+  drawobjs = 2
+  drawobjd = 3
+  drawnorm = 4
+  drawsel = 5
+  drawdel = 6
+  markW = 5
+
+type
+  AnyPtr = pointer to byte // helper type for Oberon addresses and SYSTEM.PTR
+
+  Frame* = pointer to FrameDesc
+  Location* = pointer to LocDesc
+
+  LocDesc* = record
+    x*: int32
+    y*: int32
+    next*: Location
+  end
+
+  FrameDesc* = object (Display.FrameDesc)
+    graph*: Graphics.Graph
+    Xg*: int32 // pos rel to graph origin
+    Yg*: int32
+    X1*: int32 // right and upper margins
+    Y1*: int32
+    x*: int32 // x = X + Xg, y = Y + Yg
+    y*: int32
+    col*: int32
+    marked*: boolean
+    ticked*: boolean
+    mark*: LocDesc
+  end
+
+  DrawMsg* = object (Graphics.Msg)
+    f*: Frame
+    x*: int32
+    y*: int32
+    col*: int32
+    mode*: int32
+  end
+  PDrawMsg* = pointer to DrawMsg
+
+  UpdateMsg = object (Display.FrameMsg)
+    id: int32
+    graph: Graphics.Graph
+    obj: Graphics.Object
+  end
+  PUpdateMsg = pointer to UpdateMsg
+
+  ChangedMsg = object (Display.FrameMsg)
+    f: Frame
+    graph: Graphics.Graph
+    mode: int32
+  end
+  PChangedMsg = pointer to ChangedMsg
+
+  SelQuery = object (Display.FrameMsg)
+    f: Frame
+    time: int32
+  end
+  PSelQuery = pointer to SelQuery
+
+  FocusQuery = object (Display.FrameMsg)
+    f: Frame
+  end
+  PFocusQuery = pointer to FocusQuery
+
+  PosQuery = object (Display.FrameMsg)
+    f: Frame
+    x: int32
+    y: int32
+  end
+  PPosQuery = pointer to PosQuery
+
+  DispMsg = object (Display.FrameMsg)
+    x1: int32
+    y1: int32
+    w: int32
+    pat: AnyPtr
+    graph: Graphics.Graph
+  end
+  PDispMsg = pointer to DispMsg
+
+var
+  Crosshair*: Oberon.Marker
+  tack*: AnyPtr // patterns
+  dotted*: AnyPtr
+  dotted1*: AnyPtr
+  tackP: array 11 of byte
+  dottedP: array 22 of byte
+  dotted1P: array 22 of byte
+  newcap: Graphics.Caption
+  TBuf: Texts.Buffer
+  DW: int32
+  DH: int32
+  CL: int32
+  W: Texts.Writer
+
+(*Exported procedures:
+Restore, Focus, Selected, This, Draw, DrawNorm, Erase,
+DrawObj, EraseObj, Change, Defocus, Deselect, Macro, Open*)
+
+procedure SetChangeMark(F: Frame; col: int32)
+begin
+  // set mark in corner of frame
+  if F.H > 16 then
+    if col = 0 then
+      Display.ReplConst(Display.black, F.X + F.W - 12, F.Y + F.H - 12, 8, 8, Display.replace)
+    else
+      Display.CopyPattern(Display.white, Display.block, F.X + F.W - 12, F.Y + F.H - 12, Display.paint)
+    end
+  end
+end SetChangeMark
+
+procedure Restore*(F: Frame)
+  var x, x0, y: int32
+    M: DrawMsg
+begin
+  F.X1 := F.X + F.W
+  F.Y1 := F.Y + F.H
+  F.x := (F.X + F.Xg) div 16 * 16
+  F.y := (F.Y + F.Yg) div 16 * 16
+  F.marked := false
+  F.mark.next := nil
+  Oberon.RemoveMarks(F.X, F.Y, F.W, F.H)
+  Display.ReplConst(F.col, F.X, F.Y, F.W, F.H, 0)
+  if F.ticked then
+    x0 := (F.X + 15) div 16 * 16
+    y := (F.Y + 15) div 16 * 16
+    while y < F.Y1 do
+      x := x0
+      while x < F.X1 do
+        Display.Dot(Display.white, x, y, Display.replace)
+        inc(x, 16)
+      end
+      inc(y, 16)
+    end
+  end
+  M.f := F
+  M.x := F.x
+  M.y := F.y
+  M.col := 0
+  M.mode := 0
+  Graphics.Draw(F.graph, @M)
+  if F.graph.changed then
+    SetChangeMark(F, 1)
+  end
+end Restore
+
+procedure FlipCross(X, Y: int32)
+begin
+  if X < CL then
+    if X < 7 then
+      X := 7
+    elsif X > DW - 7 then
+      X := DW - 7
+    end
+  else
+    if X < CL + 7 then
+      X := CL + 7
+    elsif X > CL + DW - 7 then
+      X := CL + DW - 7
+    end
+  end
+  if Y < 7 then
+    Y := 7
+  elsif Y > DH then
+    Y := DH - 7
+  end
+  Display.CopyPattern(Display.white, Display.cross, X - 7, Y - 7, Display.invert)
+end FlipCross
+
+procedure Focus*(): Frame
+  var FQ: FocusQuery
+begin
+  FQ.f := nil
+  Viewers.Broadcast(@FQ)
+  return FQ.f
+end Focus
+
+procedure Selected*(): Frame
+  var SQ: SelQuery
+begin
+  SQ.f := nil
+  SQ.time := 0
+  Viewers.Broadcast(@SQ)
+  return SQ.f
+end Selected
+
+procedure This*(x, y: int32): Frame
+  var PQ: PosQuery
+begin
+  PQ.f := nil
+  PQ.x := x
+  PQ.y := y
+  Viewers.Broadcast(@PQ)
+  return PQ.f
+end This
+
+procedure Mark(F: Frame; mode: int32)
+  var CM: ChangedMsg
+begin
+  CM.f := F
+  CM.graph := F.graph
+  CM.mode := mode
+  Viewers.Broadcast(@CM)
+end Mark
+
+procedure Draw*(F: Frame)
+  var UM: UpdateMsg
+begin
+  UM.id := drawsel
+  UM.graph := F.graph
+  Viewers.Broadcast(@UM)
+end Draw
+
+procedure DrawNorm(F: Frame)
+  var UM: UpdateMsg
+begin
+  UM.id := drawnorm
+  UM.graph := F.graph
+  Viewers.Broadcast(@UM)
+end DrawNorm
+
+procedure Erase*(F: Frame)
+  var UM: UpdateMsg
+begin
+  UM.id := drawdel
+  UM.graph := F.graph
+  Viewers.Broadcast(@UM)
+  Mark(F, 1)
+end Erase
+
+procedure DrawObj*(F: Frame; obj: Graphics.Object)
+  var UM: UpdateMsg
+begin
+  UM.id := drawobj
+  UM.graph := F.graph
+  UM.obj := obj
+  Viewers.Broadcast(@UM)
+end DrawObj
+
+procedure EraseObj*(F: Frame; obj: Graphics.Object)
+  var UM: UpdateMsg
+begin
+  UM.id := drawobjd
+  UM.graph := F.graph
+  UM.obj := obj
+  Viewers.Broadcast(@UM)
+end EraseObj
+
+procedure Change*(F: Frame; msg: ^Graphics.Msg)
+begin
+  if F # nil then
+    Erase(F)
+    Graphics.Change(F.graph, msg)
+    Draw(F)
+  end
+end Change
+
+procedure FlipMark(x, y: int32)
+begin
+  Display.ReplConst(Display.white, x - 7, y, 15, 1, 2)
+  Display.ReplConst(Display.white, x, y - 7, 1, 15, 2)
+end FlipMark
+
+procedure Defocus*(F: Frame)
+  var m: Location
+begin
+  newcap := nil
+  if F.marked then
+    FlipMark(F.mark.x, F.mark.y)
+    m := F.mark.next
+    while m # nil do
+      FlipMark(m.x, m.y)
+      m := m.next
+    end
+    F.marked := false
+    F.mark.next := nil
+  end
+end Defocus
+
+procedure Deselect*(F: Frame)
+  var UM: UpdateMsg
+begin
+  if F # nil then
+    UM.id := drawnorm
+    UM.graph := F.graph
+    Viewers.Broadcast(@UM)
+    Graphics.Deselect(F.graph)
+  end
+end Deselect
+
+procedure Macro*(const Lname, Mname: pointer to array of char)
+  var x, y: int32
+    F: Frame
+    mac: Graphics.Macro
+    mh: Graphics.MacHead
+    L: Graphics.Library
+begin
+  F := Focus()
+  if F # nil then
+    x := F.mark.x - F.x
+    y := F.mark.y - F.y
+    Graphics.GetLib(Lname, false, @L)
+    if L # nil then
+      mh := Graphics.ThisMac(L, Mname)
+      if mh # nil then
+        Deselect(F)
+        Defocus(F)
+        newgc(mac)
+        mac.x := x
+        mac.y := y
+        mac.w := mh.w
+        mac.h := mh.h
+        mac.mac := mh
+        mac.do_ := Graphics.MacMethod
+        mac.col := val(byte, Oberon.CurCol)
+        Graphics.Add(F.graph, mac)
+        DrawObj(F, mac)
+        Mark(F, 1)
+      end
+    else
+      Texts.WriteString(@W, Lname)
+      Texts.WriteString(@W, " not available")
+      Texts.WriteLn(@W)
+      Texts.Append(Oberon.Log, W.buf)
+    end
+  end
+end Macro
+
+procedure CaptionCopy(F: Frame; x1, y1: int32; T: Texts.Text; beg, end_: int32): Graphics.Caption
+  var ch: char
+    dx, w, x2, y2, w1, h1: int32
+    cap_: Graphics.Caption
+    pat: AnyPtr
+    R: Texts.Reader
+begin
+  Texts.Write(@W, 0DX)
+  newgc(cap_)
+  cap_.len_ := end_ - beg
+  cap_.pos := Graphics.T.len_ + 1
+  cap_.do_ := Graphics.CapMethod
+  Texts.OpenReader(@R, T, beg)
+  Texts.Read(@R, @ch)
+  W.fnt := R.fnt
+  W.col := R.col
+  w := 0
+  cap_.x := x1 - F.x
+  cap_.y := y1 - F.y + R.fnt.minY
+  while beg < end_ do
+    Fonts.GetPat(R.fnt, ch, @dx, @x2, @y2, @w1, @h1, @pat)
+    inc(w, dx)
+    inc(beg)
+    Texts.Write(@W, ch)
+    Texts.Read(@R, @ch)
+  end
+  cap_.w := w
+  cap_.h := W.fnt.height
+  cap_.col := val(byte, W.col)
+  Texts.Append(Graphics.T, W.buf)
+  Graphics.Add(F.graph, cap_)
+  Mark(F, 1)
+  return cap_
+end CaptionCopy
+
+procedure NewLine(F: Frame; G: Graphics.Graph; x, y, w, h: int32)
+  var line: Graphics.Line
+begin
+  newgc(line)
+  line.col := val(byte, Oberon.CurCol)
+  line.x := x - F.x
+  line.y := y - F.y
+  line.w := w
+  line.h := h
+  line.do_ := Graphics.LineMethod
+  Graphics.Add(G, line)
+  Mark(F, 1)
+end NewLine
+
+procedure Edit(F: Frame; x0, y0: int32; k0: set)
+  var obj: Graphics.Object
+    x1, y1, w, h, t, beg, end_, time: int32
+    k1, k2: set
+    mark, newmark: Location
+    T: Texts.Text
+    Fd: Frame
+    G: Graphics.Graph
+begin
+  k1 := k0
+  G := F.graph
+  repeat
+    Input.Mouse(@k2, @x1, @y1)
+    k1 := k1 + k2
+    dec(x1, (x1 - F.x) mod 4)
+    dec(y1, (y1 - F.y) mod 4)
+    Oberon.DrawMouse(Crosshair, x1, y1)
+  until k2 = {}
+  Oberon.FadeMouse()
+  if k0 = {2} then // left key
+    w := abs(x1 - x0)
+    h := abs(y1 - y0)
+    if k1 = {2} then
+      if (w < 7) & (h < 7) then // set mark
+        if (x1 - markW >= F.X) & (x1 + markW < F.X1) & (y1 - markW >= F.Y) & (y1 + markW < F.Y1) then
+          Defocus(F)
+          Oberon.PassFocus(Viewers.This(F.X, F.Y))
+          F.mark.x := x1
+          F.mark.y := y1
+          F.marked := true
+          FlipMark(x1, y1)
+        end
+      else // draw line
+        Deselect(F)
+        if w < h then
+          if y1 < y0 then
+            y0 := y1
+          end
+          NewLine(F, G, x0, y0, Graphics.width, h)
+        else
+          if x1 < x0 then
+            x0 := x1
+          end
+          NewLine(F, G, x0, y0, w, Graphics.width)
+        end
+        Draw(F)
+      end
+    elsif k1 = {2,1} then // copy text selection to mark
+      Deselect(F)
+      Oberon.GetSelection(@T, @beg, @end_, @time)
+      if time >= 0 then
+        DrawObj(F, CaptionCopy(F, x1, y1, T, beg, end_))
+        Mark(F, 1)
+      end
+    elsif k1 = {2,0} then
+      if F.marked then // set secondary mark
+        newgc(newmark)
+        newmark.x := x1
+        newmark.y := y1
+        newmark.next := nil
+        FlipMark(x1, y1)
+        mark := F.mark.next
+        if mark = nil then
+          F.mark.next := newmark
+        else
+          while mark.next # nil do
+            mark := mark.next
+          end
+          mark.next := newmark
+        end
+      end
+    end
+  elsif k0 = {1} then // middle key
+    if k1 = {1} then
+      // move
+      if (x0 # x1) or (y0 # y1) then
+        Fd := This(x1, y1)
+        Erase(F)
+        if Fd = F then
+          Graphics.Move(G, x1 - x0, y1 - y0)
+        elsif (Fd # nil) & (Fd.graph = G) then
+          Graphics.Move(G, (x1 - Fd.x - x0 + F.x) div 4 * 4, (y1 - Fd.y - y0 + F.y) div 4 * 4)
+        end
+
+        Draw(F)
+        Mark(F, 1)
+      end
+    elsif k1 = {1,2} then // copy
+      Fd := This(x1, y1)
+      if Fd # nil then
+        DrawNorm(F)
+        if Fd = F then
+          Graphics.Copy(G, G, x1 - x0, y1 - y0)
+        else
+          Deselect(Fd)
+          Graphics.Copy(G, Fd.graph, (x1 - Fd.x - x0 + F.x) div 4 * 4, (y1 - Fd.y - y0 + F.y) div 4 * 4)
+        end
+        Draw(Fd)
+        Mark(F, 1)
+      end
+    elsif k1 = {1,0} then // shift graph
+      inc(F.Xg, x1 - x0)
+      inc(F.Yg, y1 - y0)
+      Restore(F)
+    end
+  elsif k0 = {0} then // right key: select
+    newcap := nil
+    if k1 = {0} then
+      Deselect(F)
+    end
+    if (abs(x0 - x1) < 7) & (abs(y0 - y1) < 7) then
+      obj := Graphics.ThisObj(G, x1 - F.x, y1 - F.y)
+      if obj # nil then
+        Graphics.SelectObj(G, obj)
+        DrawObj(F, obj)
+      end
+    else
+      if x1 < x0 then
+        t := x0
+        x0 := x1
+        x1 := t
+      end
+      if y1 < y0 then
+        t := y0
+        y0 := y1
+        y1 := t
+      end
+      Graphics.SelectArea(G, x0 - F.x, y0 - F.y, x1 - F.x, y1 - F.y)
+      Draw(F)
+    end
+  end
+end Edit
+
+procedure NewCaption(F: Frame; col: int32; font: Fonts.Font)
+begin
+  Texts.Write(@W, 0DX)
+  newgc(newcap)
+  newcap.x := F.mark.x - F.x
+  newcap.y := F.mark.y - F.y + font.minY
+  newcap.w := 0
+  newcap.h := font.height
+  newcap.col := val(byte, col)
+  newcap.pos := Graphics.T.len_ + 1
+  newcap.len_ := 0
+  newcap.do_ := Graphics.CapMethod
+  Graphics.Add(F.graph, newcap)
+  W.fnt := font
+  Mark(F, 1)
+end NewCaption
+
+procedure InsertChar(F: Frame; ch: char)
+  var w1, h1: int32
+    DM: DispMsg
+begin
+  DM.graph := F.graph
+  Fonts.GetPat(W.fnt, ch, @DM.w, @DM.x1, @DM.y1, @w1, @h1, @DM.pat)
+  dec(DM.y1, W.fnt.minY)
+  if newcap.x + newcap.w + DM.w + F.x < F.X1 then
+    Viewers.Broadcast(@DM)
+    inc(newcap.w, DM.w)
+    inc(newcap.len_)
+    Texts.Write(@W, ch)
+  end
+  Texts.Append(Graphics.T, W.buf)
+end InsertChar
+
+procedure DeleteChar(F: Frame)
+  var w1, h1: int32
+    ch: char
+    pos: int32
+    DM: DispMsg
+    R: Texts.Reader
+begin
+  DM.graph := F.graph
+  if newcap.len_ > 0 then
+    pos := Graphics.T.len_ // backspace
+    Texts.OpenReader(@R, Graphics.T, pos - 1)
+    Texts.Read(@R, @ch)
+    if ch >= " " then
+      Fonts.GetPat(R.fnt, ch, @DM.w, @DM.x1, @DM.y1, @w1, @h1, @DM.pat)
+      dec(newcap.w, DM.w)
+      dec(newcap.len_)
+      dec(DM.y1, R.fnt.minY)
+      Viewers.Broadcast(@DM)
+      Texts.Delete(Graphics.T, pos - 1, pos, TBuf)
+    end
+  end
+end DeleteChar
+
+procedure GetSelection(F: Frame; text: ^Texts.Text; beg, end_, time: ^int32)
+  var obj: Graphics.Object
+begin
+  obj := F.graph.sel
+  if (obj # nil) & (F.graph.time >= time^) then
+    case obj of
+    | Graphics.Caption:
+      beg^ := obj(Graphics.Caption).pos
+      end_^ := obj(Graphics.Caption).pos + obj(Graphics.Caption).len_
+      text^ := Graphics.T
+      time^ := F.graph.time
+    end
+  end
+end GetSelection
+
+procedure Handle*(G: Display.Frame; M: ^Display.FrameMsg)
+  var x, y: int32
+    dM: DrawMsg
+    G1: Frame
+begin
+  case G of
+  | Frame:
+    case M of
+    | Oberon.PInputMsg:
+      if M.id = Oberon.track then
+        x := M.X - (M.X - G.x) mod 4
+        y := M.Y - (M.Y - G.y) mod 4
+        if M.keys # {} then
+          Edit(G, x, y, M.keys)
+        else
+          Oberon.DrawMouse(Crosshair, x, y)
+        end
+      elsif M.id = Oberon.consume then
+        if M.ch = 7FX then
+          // DEL
+          Erase(G)
+          Graphics.Delete(G.graph)
+          Mark(G, 1)
+        elsif (M.ch >= " ") & (M.ch < 7FX) then
+          if newcap # nil then
+            InsertChar(G, M.ch)
+            Mark(G, 1)
+          elsif G.marked then
+            Defocus(G)
+            Deselect(G)
+            NewCaption(G, M.col, M.fnt)
+            InsertChar(G, M.ch)
+          end
+        elsif (M.ch = 8X) & (newcap # nil) then
+          DeleteChar(G)
+          Mark(G, 1)
+        end
+      end
+    | PUpdateMsg:
+      if M.graph = G.graph then
+        dM.f := G
+        dM.x := G.x
+        dM.y := G.y
+        dM.col := 0
+        if M.id = drawobj then
+          dM.mode := 0
+          M.obj.do_.draw(M.obj, @dM)
+        elsif M.id = drawobjs then
+          dM.mode := 1
+          M.obj.do_.draw(M.obj, @dM)
+        elsif M.id = drawobjd then
+          dM.mode := 3
+          M.obj.do_.draw(M.obj, @dM)
+        elsif M.id = drawsel then
+          dM.mode := 0
+          Graphics.DrawSel(G.graph, @dM)
+        elsif M.id = drawnorm then
+          dM.mode := 2
+          Graphics.DrawSel(G.graph, @dM)
+        elsif M.id = drawdel then
+          dM.mode := 3
+          Graphics.DrawSel(G.graph, @dM)
+        end
+      end
+    | PChangedMsg:
+      if M.graph = G.graph then
+        SetChangeMark(G, M.mode)
+      end
+    | PSelQuery:
+      if (G.graph.sel # nil) & (M.time < G.graph.time) then
+        M.f := G
+        M.time := G.graph.time
+      end
+    | PFocusQuery:
+      if G.marked then
+        M.f := G
+      end
+    | PPosQuery:
+      if (G.X <= M.x) & (M.x < G.X1) & (G.Y <= M.y) & (M.y < G.Y1) then
+        M.f := G
+      end
+    | PDispMsg:
+      x := G.x + newcap.x + newcap.w
+      y := G.y + newcap.y
+      if (M.graph = G.graph) & (x >= G.X) & (x + M.w < G.X1) & (y >= G.Y) & (y < G.Y1) then
+        Display.CopyPattern(Oberon.CurCol, M.pat, x + M.x1, y + M.y1, 2)
+        Display.ReplConst(Display.white, x, y, M.w, newcap.h, 2)
+      end
+    | Oberon.PControlMsg:
+      if M.id = Oberon.neutralize then
+        Oberon.RemoveMarks(G.X, G.Y, G.W, G.H)
+        Defocus(G)
+        DrawNorm(G)
+        Graphics.Deselect(G.graph)
+      elsif M.id = Oberon.defocus then
+        Defocus(G)
+      end
+    | Oberon.PSelectionMsg:
+      GetSelection(G, @M.text, @M.beg, @M.end_, @M.time)
+    | Oberon.PCopyMsg:
+      Oberon.RemoveMarks(G.X, G.Y, G.W, G.H)
+      Defocus(G)
+      newgc(G1)
+      G1^ := G^
+      M.F := G1
+    | MenuViewers.PModifyMsg:
+      G.Y := M.Y
+      G.H := M.H
+      Restore(G)
+    end
+  end
+end Handle
+
+procedure Store*(F: Frame; const name: pointer to array of char)
+begin
+  Mark(F, 0)
+  Graphics.WriteFile(F.graph, name)
+end Store
+
+// ------------------- Draw Methods -----------------------
+
+procedure ReplConst*(F: Frame; col, x, y, w, h, mode: int32)
+begin
+  if x < F.X then
+    dec(w, F.X - x)
+    x := F.X
+  end
+  if x + w >= F.X1 then
+    w := F.X1 - x
+  end
+  if y < F.Y then
+    dec(h, F.Y - y)
+    y := F.Y
+  end
+  if y + h >= F.Y1 then
+    h := F.Y1 - y
+  end
+  Display.ReplConst(col, x, y, w, h, mode)
+end ReplConst
+
+procedure ReplPattern*(F: Frame; col: int32; patadr: AnyPtr; x, y, w, h, mode: int32)
+begin
+  if x < F.X then
+    dec(w, F.X - x)
+    x := F.X
+  end
+  if x + w >= F.X1 then
+    w := F.X1 - x
+  end
+  if y < F.Y then
+    dec(h, F.Y - y)
+    y := F.Y
+  end
+  if y + h >= F.Y1 then
+    h := F.Y1 - y
+  end
+  Display.ReplPattern(col, patadr, x, y, w, h, mode)
+end ReplPattern
+
+procedure DrawLine(obj: Graphics.Object; M: ^Graphics.Msg)
+  (*M.mode = 0: draw according to state,
+  = 1: normal -> selected,
+  = 2: selected -> normal,
+  = 3: erase*)
+  var x, y, w, h, col: int32
+    f: Frame
+begin
+  case M of
+  | PDrawMsg:
+    x := obj.x + M.x
+    y := obj.y + M.y
+    w := obj.w
+    h := obj.h
+    f := M.f
+    if (x + w > f.X) & (x < f.X1) & (y + h > f.Y) & (y < f.Y1) then
+      col := +obj.col
+      if (M.mode = 0) & obj.selected or (M.mode = 1) then
+        ReplPattern(f, col, Display.grey, x, y, w, h, Display.replace)
+      elsif M.mode in {0,2} then
+        ReplConst(f, col, x, y, w, h, Display.replace)
+      elsif M.mode = 3 then
+        ReplConst(f, Display.black, x, y, w, h, Display.replace) // erase
+      end
+    end
+  end
+end DrawLine
+
+procedure DrawCaption(obj: Graphics.Object; M: ^Graphics.Msg)
+  var x, y, dx, x0, x1, y0, y1, w, h, w1, h1, col: int32
+    f: Frame
+    ch: char
+    pat: AnyPtr
+    fnt: Fonts.Font
+    R: Texts.Reader
+begin
+  case M of
+  | PDrawMsg:
+    x := obj.x + M.x
+    y := obj.y + M.y
+    w := obj.w
+    h := obj.h
+    f := M.f
+    if (f.X <= x) & (x <= f.X1) & (f.Y <= y) & (y + h <= f.Y1) then
+      if x + w > f.X1 then
+        w := f.X1 - x
+      end
+      Texts.OpenReader(@R, Graphics.T, obj(Graphics.Caption).pos)
+      Texts.Read(@R, @ch)
+      if M.mode = 0 then
+        if ch >= " " then
+          fnt := R.fnt
+          x0 := x
+          y0 := y - fnt.minY
+          col := +obj.col
+          repeat
+            Fonts.GetPat(fnt, ch, @dx, @x1, @y1, @w1, @h1, @pat)
+            if x0 + x1 + w1 <= f.X1 then
+              Display.CopyPattern(col, pat, x0 + x1, y0 + y1, Display.paint)
+              inc(x0, dx)
+              Texts.Read(@R, @ch)
+            else
+              ch := 0X
+            end
+          until ch < " "
+          if obj.selected then
+            ReplConst(f, Display.white, x, y, w, h, Display.invert)
+          end
+        end
+      elsif M.mode in {1,2} then
+        ReplConst(f, Display.white, x, y, w, h, Display.invert)
+      elsif M.mode = 3 then
+        ReplConst(f, Display.black, x, y, w, h, Display.replace)
+      end
+    end
+  end
+end DrawCaption
+
+procedure DrawMacro(obj: Graphics.Object; M: ^Graphics.Msg)
+  var x, y, w, h: int32
+    f: Frame
+    M1: DrawMsg
+begin
+  case M of
+  | PDrawMsg:
+    x := obj.x + M.x
+    y := obj.y + M.y
+    w := obj.w
+    h := obj.h
+    f := M.f
+    if (x + w > f.X) & (x < f.X1) & (y + h > f.Y) & (y < f.Y1) then
+      M1.x := x
+      M1.y := y
+      if M.mode = 0 then
+        M1.f := f
+        M1.col := +obj.col
+        M1.mode := 0
+        Graphics.DrawMac(obj(Graphics.Macro).mac, @M1)
+        if obj.selected then
+          ReplPattern(f, Display.white, dotted, x, y, w, h, Display.invert)
+        end
+      elsif M.mode in {1,2} then
+        ReplPattern(f, Display.white, dotted, x, y, w, h, Display.invert)
+      elsif M.mode = 3 then
+        ReplConst(f, Display.black, x, y, w, h, Display.replace)
+      end
+    end
+  end
+end DrawMacro
+
+// ---------------------------------------------------------------
+
+procedure Open*(G: Frame; graph: Graphics.Graph)
+begin
+  G.graph := graph
+  G.Xg := 0
+  G.Yg := 0
+  G.x := G.X
+  G.y := G.Y
+  G.col := Display.black
+  G.marked := false
+  G.mark.next := nil
+  G.ticked := true
+  G.handle := Handle
+end Open
+
+begin
+  DW := Display.Width - 8
+  DH := Display.Height - 8
+  CL := 0
+  Texts.OpenWriter(@W)
+  tackP := $0707 4122 1408 1422 4100$
+  tack := cast(AnyPtr, @tackP)
+  dottedP := $2004 0000 1111 1111 0000 0000 0000 0000 0000 0000$
+  dotted := cast(AnyPtr, @dottedP)
+  dotted1P := $2004 0000 1111 1111 0000 0000 4444 4444 0000 0000$
+  dotted1 := cast(AnyPtr, @dotted1P)
+  Crosshair.Fade := FlipCross
+  Crosshair.Draw := FlipCross
+  Graphics.InstallDrawMethods(DrawLine, DrawCaption, DrawMacro)
+end GraphicFrames.

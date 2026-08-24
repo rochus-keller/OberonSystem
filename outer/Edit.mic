@@ -1,0 +1,314 @@
+module Edit [level=5] // JG 2.11.90 / NW 28.11.2015 / RK 2026
+
+import Files, Fonts, Texts, Display, Viewers, Oberon, MenuViewers, TextFrames
+
+const
+  CR = 0DX
+  maxlen = 32
+  StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store"
+
+var
+  W: Texts.Writer
+  time: int32
+  M: int32
+  pat: array maxlen of char
+  d: array 256 of int32
+
+procedure Max(i, j: int32): int32 inline
+begin
+  if i >= j then
+    return i
+  end
+  return j
+end Max
+
+procedure Open*()
+  var T: Texts.Text
+    S: Texts.Scanner
+    V: Viewers.Viewer
+    X, Y, beg, end_, time: int32
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if (S.class = Texts.Char) & (S.c = "^") or (S.line # 0) then
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.OpenScanner(@S, T, beg)
+      Texts.Scan(@S)
+    end
+  end
+  if S.class = Texts.Name then
+    Oberon.AllocateUserViewer(Oberon.Par.vwr.X, @X, @Y)
+    V := MenuViewers.New(TextFrames.NewMenu(@S.s, StandardMenu), TextFrames.NewText(TextFrames.Text(@S.s), 0), TextFrames.menuH, X, Y)
+  end
+end Open
+
+procedure Store*()
+  var V: Viewers.Viewer
+    Text: TextFrames.Frame
+    T: Texts.Text
+    S: Texts.Scanner
+    f: Files.File
+    R: Files.Rider
+    beg, end_, time, len_: int32
+
+  procedure Backup(name: pointer to array of char)
+    var res, i: int32
+      bak: array 32 of char
+  begin
+    i := 0
+    while name[i] # 0X do
+      bak[i] := name[i]
+      inc(i)
+    end
+    bak[i] := "."
+    bak[i + 1] := "B"
+    bak[i + 2] := "a"
+    bak[i + 3] := "k"
+    bak[i + 4] := 0X
+    Files.Rename(name, @bak, @res)
+  end Backup
+begin
+  Texts.WriteString(@W, "Edit.Store ")
+  if Oberon.Par.frame = Oberon.Par.vwr.dsc then
+    V := Oberon.Par.vwr
+    Texts.OpenScanner(@S, V.dsc(TextFrames.Frame).text, 0)
+  else
+    V := Oberon.MarkedViewer()
+    Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  end
+  Texts.Scan(@S)
+  if (S.class = Texts.Char) & (S.c = "^") then
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.OpenScanner(@S, T, beg)
+      Texts.Scan(@S)
+    end
+  end
+  if (S.class = Texts.Name) & (V.dsc # nil) & (V.dsc.next is TextFrames.Frame) then
+    Text := V.dsc.next(TextFrames.Frame)
+    Texts.WriteString(@W, @S.s)
+    Texts.WriteInt(@W, Text.text.len_, 8)
+    Texts.WriteLn(@W)
+    Texts.Append(Oberon.Log, W.buf)
+    Backup(@S.s)
+    Texts.Close(Text.text, @S.s)
+  end
+end Store
+
+procedure CopyLooks*()
+  var T: Texts.Text
+    F: TextFrames.Frame
+    v: Viewers.Viewer
+    beg, end_, time: int32
+    fnt: Fonts.Font
+    col, voff: int32
+begin
+  Oberon.GetSelection(@T, @beg, @end_, @time)
+  if time >= 0 then
+    v := Oberon.FocusViewer
+    if (v # nil) & (v.dsc # nil) & (v.dsc.next is TextFrames.Frame) then
+      F := v.dsc.next(TextFrames.Frame)
+      Texts.Attributes(F.text, F.carloc.pos, @fnt, @col, @voff)
+      Texts.ChangeLooks(T, beg, end_, {0,1,2}, fnt, col, voff)
+    end
+  end
+end CopyLooks
+
+procedure ChangeFont*()
+  var S: Texts.Scanner
+    T: Texts.Text
+    beg, end_: int32
+begin
+  Oberon.GetSelection(@T, @beg, @end_, @time)
+  if time >= 0 then
+    Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+    Texts.Scan(@S)
+    if S.class = Texts.Name then
+      Texts.ChangeLooks(T, beg, end_, {0}, Fonts.This(@S.s), 0, 0)
+    end
+  end
+end ChangeFont
+
+procedure ChangeColor*()
+  var S: Texts.Scanner
+    T: Texts.Text
+    col, beg, end_, time: int32
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Int then
+    col := S.i
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.ChangeLooks(T, beg, end_, {1}, nil, col, 0)
+    end
+  end
+end ChangeColor
+
+procedure ChangeOffset*()
+  var S: Texts.Scanner
+    T: Texts.Text
+    voff: int32
+    ch: char
+    beg, end_, time: int32
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Int then
+    voff := S.i
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.ChangeLooks(T, beg, end_, {2}, nil, voff, 0)
+    end
+  end
+end ChangeOffset
+
+procedure Search*()
+  // uses global variables M, pat, d for Boyer-Moore search
+  var Text: TextFrames.Frame
+    V: Viewers.Viewer
+    R: Texts.Reader
+    T: Texts.Text
+    pos, beg, end_, prevTime, len_, n, i, j: int32
+    buf: array 32 of char
+
+  procedure Forward(n: int32; R: ^Texts.Reader; buf: pointer to array of char)
+    var m, j: int32
+  begin
+    m := M - n
+    j := 0
+    while j # m do
+      buf[j] := buf[n + j]
+      inc(j)
+    end
+    while j # M do
+      Texts.Read(R, @buf[j])
+      inc(j)
+    end
+  end Forward
+begin
+  V := Oberon.Par.vwr
+  if Oberon.Par.frame # V.dsc then
+    V := Oberon.FocusViewer
+  end
+  if (V.dsc # nil) & (V.dsc.next is TextFrames.Frame) then
+    Text := V.dsc.next(TextFrames.Frame)
+    prevTime := time
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time > prevTime then
+      Texts.OpenReader(@R, T, beg)
+      i := 0
+      pos := beg
+      repeat
+        Texts.Read(@R, @pat[i])
+        inc(i)
+        inc(pos)
+      until (i = maxlen) or (pos = end_)
+      M := i
+      j := 0
+      while j # 256 do
+        d[j] := M
+        inc(j)
+      end
+      j := 0
+      while j # M - 1 do
+        d[ord(pat[j])] := M - 1 - j
+        inc(j)
+      end
+    end
+    if Text.hasCar then
+      pos := Text.carloc.pos
+    else
+      pos := 0
+    end
+    len_ := Text.text.len_
+    Texts.OpenReader(@R, Text.text, pos)
+    Forward(M, @R, @buf)
+    pos := pos + M
+    j := M
+    repeat
+      dec(j)
+    until (j < 0) or (buf[j] # pat[j])
+    while (j >= 0) & (pos < len_) do
+      n := d[ord(buf[M - 1])]
+      Forward(n, @R, @buf)
+      inc(pos, n)
+      j := M
+      repeat
+        dec(j)
+      until (j < 0) or (buf[j] # pat[j])
+    end
+    if j < 0 then
+      TextFrames.RemoveSelection(Text)
+      TextFrames.RemoveCaret(Text)
+      Oberon.RemoveMarks(Text.X, Text.Y, Text.W, Text.H)
+      TextFrames.Show(Text, pos - 300)
+      Oberon.PassFocus(V)
+      TextFrames.SetCaret(Text, pos)
+    end
+  end
+end Search
+
+procedure Locate*()
+  var Text: TextFrames.Frame
+    T: Texts.Text
+    S: Texts.Scanner
+    V: Viewers.Viewer
+    beg, end_, time: int32
+begin
+  V := Oberon.FocusViewer
+  if (V.dsc # nil) & (V.dsc.next is TextFrames.Frame) then
+    Text := V.dsc.next(TextFrames.Frame)
+    Oberon.GetSelection(@T, @beg, @end_, @time)
+    if time >= 0 then
+      Texts.OpenScanner(@S, T, beg)
+      repeat
+        Texts.Scan(@S) // skip names
+      until S.class >= Texts.Int
+      if S.class = Texts.Int then
+        TextFrames.RemoveSelection(Text)
+        TextFrames.RemoveCaret(Text)
+        Oberon.RemoveMarks(Text.X, Text.Y, Text.W, Text.H)
+        TextFrames.Show(Text, Max(0, S.i - 200))
+        Oberon.PassFocus(V)
+        TextFrames.SetCaret(Text, S.i)
+      end
+    end
+  end
+end Locate
+
+procedure Recall*()
+  var Menu, Main: Display.Frame
+    buf: Texts.Buffer
+    V: Viewers.Viewer
+    pos: int32
+    M: TextFrames.Frame
+begin
+  V := Oberon.FocusViewer
+  if (V # nil) & (V is MenuViewers.Viewer) then
+    Menu := V.dsc
+    Main := V.dsc.next
+    if Main is TextFrames.Frame then
+      M := Main(TextFrames.Frame)
+      if M.hasCar then
+        TextFrames.Recall(@buf)
+        pos := M.carloc.pos + buf.len_
+        Texts.Insert(M.text, M.carloc.pos, buf)
+        TextFrames.SetCaret(M, pos)
+      end
+    elsif Menu is TextFrames.Frame then
+      M := Menu(TextFrames.Frame)
+      if M.hasCar then
+        TextFrames.Recall(@buf)
+        pos := M.carloc.pos + buf.len_
+        Texts.Insert(M.text, M.carloc.pos, buf)
+        TextFrames.SetCaret(M, pos)
+      end
+    end
+  end
+end Recall
+
+begin
+  Texts.OpenWriter(@W)
+end Edit.

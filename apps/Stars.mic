@@ -1,0 +1,199 @@
+module Stars [level=5] // NW 15.1.2013, 15.11.2013 / RK 2026
+
+import Display, Viewers, Texts, Oberon, MenuViewers, TextFrames
+
+const
+  N = 6 // nof stars
+  w = 16 // width of star
+  interval = 200 // millisec
+
+type
+  Frame = pointer to FrameDesc
+  Pos = record
+    x: int32
+    y: int32
+    dx: int32
+    dy: int32
+  end
+  FrameDesc = object (Display.FrameDesc)
+    s: array N of Pos
+  end
+  RestoreMsg = object (Display.FrameMsg)
+  end
+  PRestoreMsg = pointer to RestoreMsg
+  StepMsg = object (Display.FrameMsg)
+  end
+  PStepMsg = pointer to StepMsg
+
+var
+  T: Oberon.Task
+  W: Texts.Writer
+
+procedure Draw(x, y: int32)
+begin
+  Display.CopyPattern(Display.white, Display.star, x, y, Display.invert)
+end Draw
+
+procedure Restore(F: Frame)
+  var x0, y0: int32
+begin
+  Oberon.RemoveMarks(F.X, F.Y, F.W, F.H)
+  Display.ReplConst(0, F.X + 1, F.Y, F.W - 1, F.H, 0)
+  x0 := F.W div 2 + F.X
+  y0 := F.H div 2 + F.Y
+  F.s[0].x := x0
+  F.s[0].y := y0
+  F.s[0].dx := 2
+  F.s[0].dy := 4
+  Draw(F.s[0].x, F.s[0].y)
+  F.s[1].x := x0
+  F.s[1].y := y0
+  F.s[1].dx := 3
+  F.s[1].dy := 9
+  Draw(F.s[1].x, F.s[1].y)
+  F.s[2].x := x0
+  F.s[2].y := y0
+  F.s[2].dx := -5
+  F.s[2].dy := -2
+  Draw(F.s[2].x, F.s[2].y)
+  F.s[3].x := x0
+  F.s[3].y := y0
+  F.s[3].dx := -10
+  F.s[3].dy := 8
+  Draw(F.s[3].x, F.s[3].y)
+  F.s[4].x := x0
+  F.s[4].y := y0
+  F.s[4].dx := -7
+  F.s[4].dy := -4
+  Draw(F.s[4].x, F.s[4].y)
+  F.s[5].x := x0
+  F.s[5].y := y0
+  F.s[5].dx := 8
+  F.s[5].dy := -10
+  Draw(F.s[5].x, F.s[5].y)
+end Restore
+
+procedure Move(F: Frame; p: ^Pos)
+  var X1, Y1: int32
+begin
+  X1 := F.X + F.W - w
+  Y1 := F.Y + F.H - w
+  Draw(p.x, p.y)
+  inc(p.x, p.dx)
+  inc(p.y, p.dy)
+  if p.x < F.X then
+    p.x := 2 * F.X - p.x
+    p.dx := -p.dx
+  elsif p.x >= X1 then
+    p.x := 2 * X1 - p.x
+    p.dx := -p.dx
+  end
+  if p.y < F.Y then
+    p.y := 2 * F.Y - p.y
+    p.dy := -p.dy
+  elsif p.y >= Y1 then
+    p.y := 2 * Y1 - p.y
+    p.dy := -p.dy
+  end
+  Draw(p.x, p.y)
+end Move
+
+procedure Steps(F: Frame)
+  var i: int32
+begin
+  i := 0
+  while i < N do
+    Move(F, @F.s[i])
+    inc(i)
+  end
+end Steps
+
+procedure Handle(F: Display.Frame; M: ^Display.FrameMsg)
+  var F1: Frame
+begin
+  case F of
+  | Frame:
+    case M of
+    | Oberon.PInputMsg:
+      if M.id = Oberon.track then
+        Oberon.DrawMouseArrow(M.X, M.Y)
+      end
+    | PStepMsg:
+      Steps(F)
+    | PRestoreMsg:
+      Restore(F)
+    | Oberon.PCopyMsg:
+      Oberon.Remove(T)
+      newgc(F1)
+      F1^ := F^
+      M.F := F1
+    | MenuViewers.PModifyMsg:
+      if (M.Y # F.Y) or (M.H # F.H) then
+        F.Y := M.Y
+        F.H := M.H
+        Restore(F)
+      end
+    end
+  end
+end Handle
+
+procedure Step*()
+  var k: int32
+    M: StepMsg
+begin
+  if Oberon.Par.vwr.dsc = Oberon.Par.frame then
+    Steps(Oberon.Par.frame.next(Frame))
+  else
+    Viewers.Broadcast(@M)
+  end
+end Step
+
+procedure Open*()
+  var F: Frame
+    V: Viewers.Viewer
+    X, Y: int32
+begin
+  newgc(F)
+  F.handle := Handle
+  Oberon.AllocateUserViewer(Oberon.Par.vwr.X, @X, @Y)
+  V := MenuViewers.New(TextFrames.NewMenu("Stars", "Stars.Close  System.Grow  System.Copy  Stars.Step  Stars.Run  Stars.Stop"), F, TextFrames.menuH, X, Y)
+end Open
+
+procedure Run*()
+begin
+  Oberon.Install(T)
+end Run
+
+procedure Stop*()
+begin
+  Oberon.Remove(T)
+end Stop
+
+procedure Close*()
+begin
+  if Oberon.Par.vwr.dsc = Oberon.Par.frame then
+    Stop()
+    Viewers.Close(Oberon.Par.vwr)
+  end
+end Close
+
+procedure Step1()
+  var M: StepMsg
+begin
+  Viewers.Broadcast(@M)
+end Step1
+
+procedure SetPeriod*()
+  var S: Texts.Scanner
+begin
+  Texts.OpenScanner(@S, Oberon.Par.text, Oberon.Par.pos)
+  Texts.Scan(@S)
+  if S.class = Texts.Int then
+    T.period := S.i
+  end
+end SetPeriod
+
+begin
+  Texts.OpenWriter(@W)
+  T := Oberon.NewTask(Step1, interval)
+end Stars.
